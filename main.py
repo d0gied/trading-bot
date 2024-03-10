@@ -8,7 +8,7 @@ import aiogram
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from trading import market_review
-from bot import TG_Bot
+from bot_deprecated import TG_Bot
 from db import DB
 from db.storage import UserStorage
 from config import Config

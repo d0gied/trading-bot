@@ -9,12 +9,14 @@ from tinkoff.invest import (
     OrderType,
     OrderDirection,
 )
+from tinkoff.invest.async_services import AsyncServices
 
-from bot import TG_Bot
 from config import Config
 
+config = Config()
 
-async def get_shares(client: AsyncClient, tickers: List[str] = None) -> List[Dict]:
+
+async def get_shares(client: AsyncServices, tickers: List[str] = None) -> List[Dict]:
     """Get shares from Tinkoff API by tickers or all of them"""
     instruments: InstrumentsService = client.instruments
     shares = []
@@ -86,22 +88,22 @@ async def analize_share(share: dict, purchases: dict) -> Optional[Dict]:
     return None
 
 
-async def send_message(tg_bot: TG_Bot, trade: Dict):
-    if trade["type"] == 2:
-        message_text = f"ПРОДАЖА\n\nПокупка {trade['ticker']} {trade['date_buy']} по цене {trade['price_buy']} с коммисией {trade['buy_commission']}\nКол-во: {trade['quantity']}\n\nПродажа {trade['date_sell']} по цене {trade['price_sell']} с коммисией {trade['sell_commission']}\n\nПрибыль: {trade['profit']}"
-    else:
-        message_text = f"ПОКУПКА\n\nПокупка {trade['ticker']} {trade['date_buy']} по цене {trade['price_buy']} с коммисией {trade['buy_commission']}\nКол-во: {trade['quantity']}"
-    await tg_bot.send_signal(
-        message=message_text,
-    )
+# async def send_message(tg_bot: TG_Bot, trade: Dict):
+#     if trade["type"] == 2:
+#         message_text = f"ПРОДАЖА\n\nПокупка {trade['ticker']} {trade['date_buy']} по цене {trade['price_buy']} с коммисией {trade['buy_commission']}\nКол-во: {trade['quantity']}\n\nПродажа {trade['date_sell']} по цене {trade['price_sell']} с коммисией {trade['sell_commission']}\n\nПрибыль: {trade['profit']}"
+#     else:
+#         message_text = f"ПОКУПКА\n\nПокупка {trade['ticker']} {trade['date_buy']} по цене {trade['price_buy']} с коммисией {trade['buy_commission']}\nКол-во: {trade['quantity']}"
+#     await tg_bot.send_signal(
+#         message=message_text,
+#     )
 
 
-async def market_review(tg_bot: TG_Bot, purchases: Dict[str, Dict]):
-    async with AsyncClient(Config.TINKOFF_TOKEN) as client:
-        shares = await get_shares(client)
-    time_now = datetime.datetime.now()
-    if time_now.hour in Config.MOEX_WORKING_HOURS:
-        for share in shares:
-            trade = await analize_share(share, purchases)
-            if trade is not None:
-                await send_message(tg_bot, trade)
+# async def market_review(tg_bot: TG_Bot, purchases: Dict[str, Dict]):
+#     async with AsyncClient(config.TINKOFF_TOKEN) as client:
+#         shares = await get_shares(client)
+#     time_now = datetime.datetime.now()
+#     if time_now.hour in config.MOEX_WORKING_HOURS:
+#         for share in shares:
+#             trade = await analize_share(share, purchases)
+#             if trade is not None:
+#                 await send_message(tg_bot, trade)

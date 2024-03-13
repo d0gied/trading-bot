@@ -53,7 +53,9 @@ async def shares(call: CallbackQuery, state: FSMContext):
         shares = await get_shares(client)
     msg = []
     for share in shares:
-        msg.append(f"<code>{share['ticker']}</code> - {share['name']}")
+        msg.append(
+            f"<code>{share['ticker']}</code> - {share['name']}. Lot: {share['lot']}"
+        )
     cnt = len(msg)
     await call.message.answer("\n".join(msg[: cnt // 2]))
     await call.message.answer("\n".join(msg[cnt // 2 :]))
@@ -128,7 +130,7 @@ async def strategy(call: CallbackQuery, state: FSMContext):
 @router.message(StateFilter("add:capital"))
 async def capital(message: Message, state: FSMContext):
     try:
-        capital = float(message.text)
+        capital = float(message.text.replace(",", "."))
     except ValueError:
         await message.answer("Введите число")
         return
@@ -154,7 +156,7 @@ async def trigger(message: Message, state: FSMContext):
     if text.endswith("%"):
         text = text[:-1]
     try:
-        trigger = float(text)
+        trigger = float(text.replace(",", "."))
     except ValueError:
         await message.answer("Введите число")
         return
@@ -168,7 +170,7 @@ async def trigger(message: Message, state: FSMContext):
     keyboard.add(types.InlineKeyboardButton(text="Отмена", callback_data="cancel"))
     await state.update_data(trigger=trigger)
     ans = await message.answer(
-        "Введите количество акций для покупки/продажи при срабатывании триггера:",
+        "Введите количество лотов для покупки/продажи при срабатывании триггера:",
         reply_markup=keyboard.as_markup(),
     )
     await state.update_data(last_message_id=ans.message_id)
@@ -190,7 +192,7 @@ async def amount(message: Message, state: FSMContext):
     msg = f"Стратегия для {share}:\n"
     msg += f"Максимальный бюджет: {capital}\n"
     msg += f"Триггер: {trigger}%\n"
-    msg += f"Количество акций: {amount}\n"
+    msg += f"Количество лотов: {amount}\n"
     keyboard = InlineKeyboardBuilder()
     keyboard.add(
         types.InlineKeyboardButton(text="Продолжить", callback_data="continue")

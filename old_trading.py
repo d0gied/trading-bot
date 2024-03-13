@@ -79,27 +79,26 @@ async def get_shares(client: AsyncServices, tickers: List[str] = None) -> List[D
     return shares
 
 
-async def order(
+async def limit_order(
     figi: str,
     price: float,
     quantity: int,
     direction: int,
     client: AsyncClient,
-    order_type: int = OrderType.ORDER_TYPE_LIMIT,
 ) -> PostOrderResponse:
     account_id = await get_account_id(client)
-    made_order: PostOrderResponse = await client.orders.post_order(
+    order: PostOrderResponse = await client.orders.post_order(
         instrument_id=figi,
         account_id=account_id,
         price=float_to_quotation(price),
         quantity=quantity,
         direction=direction,
-        order_type=order_type,
+        order_type=OrderType.ORDER_TYPE_LIMIT,
         order_id=str(datetime.datetime.utcnow().timestamp()),
     )
-    if made_order.execution_report_status != 1:
-        print(figi, made_order)
-    return made_order
+    if order.execution_report_status != 1:
+        print(figi, order)
+    return order
 
 
 async def analize_strategy(
@@ -117,36 +116,36 @@ async def analize_strategy(
         with SandboxClient(config.TINKOFF_TOKEN) as client:
             share = (await get_shares(client, [strategy.ticker]))[0]
             if strategy.ticker not in purchases.keys():
-                # purchases[strategy.ticker]["last_price"] = candle_close
+                purchases[strategy.ticker]["last_price"] = candle_close
                 purchases[strategy.ticker]["available"] = strategy.max_capital
-                lots_quantity = int(
-                    strategy.max_capital
-                    // (candle_close * strategy.step_amount * share["lot"])
-                )
-                market_buy_order = await order(
-                    share["figi"],
-                    candle_close,
-                    lots_quantity * share["lot"],
-                    OrderDirection.ORDER_DIRECTION_BUY,
-                    client,
-                    OrderType.ORDER_TYPE_MARKET,
-                )
-                purchases[strategy.ticker]["available"] -= moneyvalue_to_float(
-                    market_buy_order.total_order_amount
-                )
-                buy_price = moneyvalue_to_float(market_buy_order.executed_order_price)
-                lots_quantity = market_buy_order.lots_executed
-                if lots_quantity == 0:
-                    message = f"ОШИБКА\n\n{strategy.ticker} не купилась ни разу, проверьте настройки стратегии"
-                    await send_message(message, tg_bot, config)
-                    return
-                message = f"ПОДГОТОВКА по {strategy.ticker}\n\n"
-                for i in range(1, lots_quantity + 1):
-                    purchases[strategy.ticker]["min_price"] = buy_price
-                    sell_price = round(
-                        candle_close * (1 + (strategy.step_trigger / 100) * i), 9
+                depth = 0
+                while purchases[strategy.ticker]["available"] > (
+                    candle_close
+                    * (1 - (strategy.step_trigger / 100) * depth)
+                    * strategy.step_amount
+                    * share["lot"]
+                ):
+                    buy_price = round(
+                        candle_close * (1 - (strategy.step_trigger / 100) * depth), 9
                     )
-                    sell_order = await order(
+                    buy_order = await limit_order(
+                        share["figi"],
+                        buy_price,
+                        strategy.step_amount,
+                        OrderDirection.ORDER_DIRECTION_BUY,
+                        client,
+                    )
+                    purchases[strategy.ticker]["buys"].append(buy_order.order_id)
+                    purchases[strategy.ticker]["available"] -= (
+                        buy_price * strategy.step_amount * share["lot"]
+                    )
+                    purchases[strategy.ticker]["min_price"] = buy_price
+                    message = f"СДЕЛКА\n\n{strategy.ticker} {'выставлена к покупке' if depth else 'куплена'} по цене {buy_price} и выставлена к продаже по цене {round(candle_close * (1 + (strategy.step_trigger / 100) * (depth+1)),9)}"
+                    depth += 1
+                    sell_price = round(
+                        candle_close * (1 + (strategy.step_trigger / 100) * depth), 9
+                    )
+                    sell_order = await limit_order(
                         share["figi"],
                         sell_price,
                         strategy.step_amount,
@@ -155,60 +154,15 @@ async def analize_strategy(
                     )
                     purchases[strategy.ticker]["sells"].append(sell_order.order_id)
                     purchases[strategy.ticker]["max_price"] = sell_price
-                    message += f"Выставлена к продаже по цене {sell_price}\n"
-                await send_message(message, tg_bot, config)
+                    await send_message(message, tg_bot, config)
+                if depth == 0:
+                    message = f"ОШИБКА\n\n{strategy.ticker} не купилась ни разу, проверьте настройки стратегии"
+                    await send_message(message, tg_bot, config)
             else:
                 active_orders: GetOrdersResponse = await client.orders.get_orders(
                     account_id=await get_account_id(client)
                 )
                 active_orders_ids = [order.order_id for order in active_orders.orders]
-                sells_ids = purchases[strategy.ticker]["sells"]
-                for sell_id in sells_ids:
-                    if sell_id not in active_orders_ids:
-                        selled_order: OrderState = await client.orders.get_order_state(
-                            account_id=await get_account_id(client),
-                            order_id=sell_id,
-                        )
-                        purchases[strategy.ticker]["sells"].pop(sell_id)
-                        if purchases[strategy.ticker]["buys"]:
-                            buy_id_to_cancel = purchases[strategy.ticker]["buys"][-1]
-                            purchases[strategy.ticker]["buys"].pop(buy_id_to_cancel)
-                            await client.orders.cancel_order(
-                                account_id=await get_account_id(client),
-                                order_id=buy_id_to_cancel,
-                            )
-                        purchases[strategy.ticker]["min_price"] = round(
-                            purchases[strategy.ticker]["min_price"]
-                            * (1 - (strategy.step_trigger / 100)),
-                            9,
-                        )
-                        new_sell_price = round(
-                            purchases[strategy.ticker]["max_price"]
-                            * (1 + (strategy.step_trigger / 100)),
-                            9,
-                        )
-                        if purchases[strategy.ticker]["available"] > (
-                            new_buy_price * strategy.step_amount * share["lot"]
-                        ):
-                            buy_order = await order(
-                                share["figi"],
-                                new_buy_price,
-                                strategy.step_amount,
-                                OrderDirection.ORDER_DIRECTION_BUY,
-                                client,
-                            )
-                            purchases[strategy.ticker]["buys"].append(
-                                buy_order.order_id
-                            )
-                            purchases[strategy.ticker]["available"] = (
-                                strategy.max_capital
-                                - new_buy_price * strategy.step_amount * share["lot"]
-                            )
-                            purchases[strategy.ticker]["min_price"] = new_buy_price
-                            message = f"СДЕЛКА\n\n{strategy.ticker} продана по цене {moneyvalue_to_float(selled_order.average_position_price)}, выставлена к покупке по цене {new_buy_price} и отменена к продаже по цене {purchases[strategy.ticker]['max_price']}"
-                        else:
-                            message = f"СДЕЛКА\n\n{strategy.ticker} куплена по цене {moneyvalue_to_float(selled_order.average_position_price)}, новая сделка не выставлена, т.к. нет средств"
-                        await send_message(message, tg_bot, config)
                 buys_ids = purchases[strategy.ticker]["buys"]
                 for buy_id in buys_ids:
                     if buy_id not in active_orders_ids:
@@ -231,7 +185,7 @@ async def analize_strategy(
                         if purchases[strategy.ticker]["available"] > (
                             new_buy_price * strategy.step_amount * share["lot"]
                         ):
-                            buy_order = await order(
+                            buy_order = await limit_order(
                                 share["figi"],
                                 new_buy_price,
                                 strategy.step_amount,
@@ -253,6 +207,52 @@ async def analize_strategy(
                             )
                         else:
                             message = f"СДЕЛКА\n\n{strategy.ticker} куплена по цене {moneyvalue_to_float(bought_order.average_position_price)}, отменена к продаже по цене {purchases[strategy.ticker]['max_price']}, новая сделка не выставлена, т.к. нет средств"
+                        await send_message(message, tg_bot, config)
+                sells_ids = purchases[strategy.ticker]["sells"]
+                for sell_id in sells_ids:
+                    if sell_id not in active_orders_ids:
+                        selled_order: OrderState = await client.orders.get_order_state(
+                            account_id=await get_account_id(client),
+                            order_id=sell_id,
+                        )
+                        purchases[strategy.ticker]["sells"].pop(sell_id)
+                        buy_id_to_cancel = purchases[strategy.ticker]["buys"][-1]
+                        purchases[strategy.ticker]["buys"].pop(buy_id_to_cancel)
+                        await client.orders.cancel_order(
+                            account_id=await get_account_id(client),
+                            order_id=buy_id_to_cancel,
+                        )
+                        purchases[strategy.ticker]["min_price"] = round(
+                            purchases[strategy.ticker]["min_price"]
+                            * (1 - (strategy.step_trigger / 100)),
+                            9,
+                        )
+                        new_sell_price = round(
+                            purchases[strategy.ticker]["max_price"]
+                            * (1 + (strategy.step_trigger / 100)),
+                            9,
+                        )
+                        if purchases[strategy.ticker]["available"] > (
+                            new_buy_price * strategy.step_amount * share["lot"]
+                        ):
+                            buy_order = await limit_order(
+                                share["figi"],
+                                new_buy_price,
+                                strategy.step_amount,
+                                OrderDirection.ORDER_DIRECTION_BUY,
+                                client,
+                            )
+                            purchases[strategy.ticker]["buys"].append(
+                                buy_order.order_id
+                            )
+                            purchases[strategy.ticker]["available"] = (
+                                strategy.max_capital
+                                - new_buy_price * strategy.step_amount * share["lot"]
+                            )
+                            purchases[strategy.ticker]["min_price"] = new_buy_price
+                            message = f"СДЕЛКА\n\n{strategy.ticker} продана по цене {moneyvalue_to_float(selled_order.average_position_price)}, выставлена к покупке по цене {new_buy_price} и отменена к продаже по цене {purchases[strategy.ticker]['max_price']}"
+                        else:
+                            message = f"СДЕЛКА\n\n{strategy.ticker} куплена по цене {moneyvalue_to_float(selled_order.average_position_price)}, новая сделка не выставлена, т.к. нет средств"
                         await send_message(message, tg_bot, config)
     except Exception:
         return None

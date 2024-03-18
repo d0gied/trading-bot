@@ -41,7 +41,9 @@ async def main() -> None:
     bot_url = f"https://t.me/{botname}"
     print(f"Bot url: {bot_url}")
     async with AsyncClient(config.TINKOFF_TOKEN) as client:
-        print(await get_positions(client))
+        positions = await get_positions(client)
+        for position in positions:
+            print(position.figi, position.balance)
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
         market_review,

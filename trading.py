@@ -134,15 +134,22 @@ async def analize_strategy(
     messages_to_send = []
     if purchases.get(strategy.ticker) is None:
         purchases[strategy.ticker]["available"] = strategy.max_capital
-        lots_quantity = int(
+        lots_to_buy = int(
             strategy.max_capital // (candle_close * strategy.step_amount * share["lot"])
         )
-        if lots_quantity == 0:
+        if lots_to_buy == 0:
             messages_to_send.append(
                 f"ПРЕДУПРЕЖДЕНИЕ\n\n{strategy.ticker} не выставилась на покупку, проверьте настройки стратегии"
             )
-        message = f"ПОДГОТОВКА по {strategy.ticker}\n\n"
-        for i in range(1, lots_quantity + 1):
+        lots_to_sell = positions[share["figi"]] // (
+            candle_close * strategy.step_amount * share["lot"]
+        )
+        if lots_to_sell == 0:
+            messages_to_send.append(
+                f"ПРЕДУПРЕЖДЕНИЕ\n\n{strategy.ticker} не выставилась на пролажу, проверьте аккаунт"
+            )
+        message = ""
+        for i in range(1, lots_to_buy + 1):
             buy_price = candle_close * (1 - (strategy.step_trigger / 100) * i)
             buy_price -= buy_price % share["min_price_increment"]
             buy_order = await create_order(
@@ -159,9 +166,6 @@ async def analize_strategy(
             )
             purchases[strategy.ticker]["buys"].append(buy_order.order_id)
             purchases[strategy.ticker]["min_price"] = buy_price
-        lots_to_sell = positions[share["figi"]] // (
-            candle_close * strategy.step_amount * share["lot"]
-        )
         for i in range(1, lots_to_sell + 1):
             sell_price = candle_close * (1 + (strategy.step_trigger / 100) * i)
             sell_price -= sell_price % share["min_price_increment"]
@@ -176,7 +180,8 @@ async def analize_strategy(
             purchases[strategy.ticker]["sells"].append(sell_order.order_id)
             purchases[strategy.ticker]["max_price"] = sell_price
             message += f"Выставлена к продаже по цене {sell_price}\n"
-        messages_to_send.append(message)
+        if message:
+            messages_to_send.append(f"ПОДГОТОВКА по {strategy.ticker}\n\n" + message)
     else:
         active_orders: GetOrdersResponse = await client.orders.get_orders(
             account_id=await get_account_id(client)

@@ -5,10 +5,11 @@ from aiogram.enums.parse_mode import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.redis import RedisStorage, Redis
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from tinkoff.invest import AsyncClient
 
 from bot import prepare
 from config import Config
-from trading import market_review
+from trading import market_review, get_positions
 from bot.db import (
     add_share_strategy,
     get_session,
@@ -39,6 +40,8 @@ async def main() -> None:
     botname = (await bot.me()).username
     bot_url = f"https://t.me/{botname}"
     print(f"Bot url: {bot_url}")
+    async with AsyncClient(config.TINKOFF_TOKEN) as client:
+        print(await get_positions(client))
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
         market_review,

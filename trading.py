@@ -141,13 +141,16 @@ async def analize_strategy(
             messages_to_send.append(
                 f"ПРЕДУПРЕЖДЕНИЕ\n\n{strategy.ticker} не выставилась на покупку, проверьте настройки стратегии"
             )
-        lots_to_sell = positions[share["figi"]] // (
-            candle_close * strategy.step_amount * share["lot"]
+            print(f"{strategy.ticker} не выставлился на покупку, не хватает баланса")
+        lots_to_sell = int(
+            positions[share["figi"]]
+            // (candle_close * strategy.step_amount * share["lot"])
         )
         if lots_to_sell == 0:
             messages_to_send.append(
-                f"ПРЕДУПРЕЖДЕНИЕ\n\n{strategy.ticker} не выставилась на пролажу, проверьте аккаунт"
+                f"ПРЕДУПРЕЖДЕНИЕ\n\n{strategy.ticker} не выставилась на продажу, проверьте аккаунт"
             )
+            print(f"{strategy.ticker} не выставлился на продажу, не хватает закупок")
         message = ""
         for i in range(1, lots_to_buy + 1):
             buy_price = candle_close * (1 - (strategy.step_trigger / 100) * i)
@@ -160,6 +163,7 @@ async def analize_strategy(
                 order_type=OrderType.ORDER_TYPE_LIMIT,
                 client=client,
             )
+            print(f"{strategy.ticker} выставился на покупку по цене {buy_price}")
             message += f"Выставлена к покупке по цене {buy_price}\n"
             purchases[strategy.ticker]["available"] -= moneyvalue_to_float(
                 buy_price * strategy.step_amount * share["lot"]
@@ -177,6 +181,7 @@ async def analize_strategy(
                 order_type=OrderType.ORDER_TYPE_LIMIT,
                 client=client,
             )
+            print(f"{strategy.ticker} выставился на продажу по цене {sell_price}")
             purchases[strategy.ticker]["sells"].append(sell_order.order_id)
             purchases[strategy.ticker]["max_price"] = sell_price
             message += f"Выставлена к продаже по цене {sell_price}\n"
@@ -190,6 +195,7 @@ async def analize_strategy(
         sells_ids = purchases[strategy.ticker]["sells"]
         for sell_id in sells_ids:
             if sell_id not in active_orders_ids:
+                print("Найдена совершенная продажа")
                 selled_order: OrderState = await client.orders.get_order_state(
                     account_id=await get_account_id(client),
                     order_id=sell_id,
@@ -207,6 +213,14 @@ async def analize_strategy(
                         order_id=buy_id_to_cancel,
                     )
                     message += f"Отменена к покупке по цене {purchases[strategy.ticker]['min_price']}"
+                    purchases[strategy.ticker]["available"] += (
+                        strategy.step_amount
+                        * share["lot"]
+                        * purchases[strategy.ticker]["min_price"]
+                    )
+                    print(
+                        f"{strategy.ticker} отменилась покупка по цене {purchases[strategy.ticker]['min_price']}"
+                    )
                 koef = 1 + (strategy.step_trigger / 100)
                 new_buy_price = purchases[strategy.ticker]["min_price"] * koef
                 new_sell_price = purchases[strategy.ticker]["max_price"] * koef
@@ -220,6 +234,9 @@ async def analize_strategy(
                     order_type=OrderType.ORDER_TYPE_LIMIT,
                     client=client,
                 )
+                print(
+                    f"{strategy.ticker} выставилась новая продажа по цене {new_sell_price}"
+                )
                 purchases[strategy.ticker]["sells"].append(sell_order.order_id)
                 message += f"\nВыставлена к продаже по цене {new_sell_price}\n"
                 if purchases[strategy.ticker]["available"] > (
@@ -233,10 +250,12 @@ async def analize_strategy(
                         OrderType.ORDER_TYPE_LIMIT,
                         client,
                     )
+                    print(
+                        f"{strategy.ticker} выставилась новая покупка по цене {new_buy_price}"
+                    )
                     purchases[strategy.ticker]["buys"].append(buy_order.order_id)
-                    purchases[strategy.ticker]["available"] = (
-                        strategy.max_capital
-                        - new_buy_price * strategy.step_amount * share["lot"]
+                    purchases[strategy.ticker]["available"] -= (
+                        new_buy_price * strategy.step_amount * share["lot"]
                     )
                     purchases[strategy.ticker]["min_price"] = new_buy_price
                     message += f"\nВыставлена к покупке по цене {new_buy_price}"
@@ -245,6 +264,7 @@ async def analize_strategy(
         buys_ids = purchases[strategy.ticker]["buys"]
         for buy_id in buys_ids:
             if buy_id not in active_orders_ids:
+                print("Найдена совершенная покупка")
                 bought_order: OrderState = await client.orders.get_order_state(
                     account_id=await get_account_id(client),
                     order_id=buy_id,
@@ -258,7 +278,10 @@ async def analize_strategy(
                         account_id=await get_account_id(client),
                         order_id=sell_id_to_cancel,
                     )
-                    message += f"Отменена к продаже по цене {purchases[strategy.ticker]['min_price']}"
+                    print(
+                        f"{strategy.ticker} отменилась продажа по цене {purchases[strategy.ticker]['max_price']}"
+                    )
+                    message += f"Отменена к продаже по цене {purchases[strategy.ticker]['max_price']}"
                 koef = 1 - (strategy.step_trigger / 100)
                 new_buy_price = purchases[strategy.ticker]["min_price"] * koef
                 new_sell_price = purchases[strategy.ticker]["max_price"] * koef
@@ -271,6 +294,9 @@ async def analize_strategy(
                     direction=OrderDirection.ORDER_DIRECTION_SELL,
                     order_type=OrderType.ORDER_TYPE_LIMIT,
                     client=client,
+                )
+                print(
+                    f"{strategy.ticker} выставилась новая продажа по цене {new_sell_price}"
                 )
                 purchases[strategy.ticker]["sells"].append(sell_order.order_id)
                 message += f"\nВыставлена к продаже по цене {new_sell_price}\n"
@@ -285,10 +311,12 @@ async def analize_strategy(
                         OrderType.ORDER_TYPE_LIMIT,
                         client,
                     )
+                    print(
+                        f"{strategy.ticker} выставилась новая покупка по цене {new_buy_price}"
+                    )
                     purchases[strategy.ticker]["buys"].append(buy_order.order_id)
-                    purchases[strategy.ticker]["available"] = (
-                        strategy.max_capital
-                        - new_buy_price * strategy.step_amount * share["lot"]
+                    purchases[strategy.ticker]["available"] -= (
+                        new_buy_price * strategy.step_amount * share["lot"]
                     )
                     purchases[strategy.ticker]["min_price"] = new_buy_price
                     message += f"\nВыставлена к покупке по цене {new_buy_price}"
@@ -321,6 +349,7 @@ async def market_review(
         shares = await get_shares(client, [strategy.ticker for strategy in strategies])
         strategies_as_shares = {share["ticker"]: share for share in shares}
         for strategy in strategies:
+            print(f"Проверка {strategy.ticker}")
             if purchases.get(strategy.ticker) is None:
                 purchases[strategy.ticker] = {}
             messages = await analize_strategy(

@@ -4,7 +4,6 @@ from decimal import Decimal
 from typing import Optional, List, Dict
 
 import aiogram
-from tinkoff.invest.sandbox.client import SandboxClient
 from tinkoff.invest.services import InstrumentsService
 from tinkoff.invest.utils import decimal_to_quotation, quotation_to_decimal, now
 from tinkoff.invest import (
@@ -131,7 +130,7 @@ async def analize_strategy(
     strategy: ShareStrategy,
     share: dict,
     purchases: dict,
-    positions: List[PositionsSecurities],
+    positions: Dict[str, PositionsSecurities],
     client: AsyncClient,
 ) -> List[str]:
     last_candle = await get_last_candle(share, client)
@@ -162,21 +161,11 @@ async def analize_strategy(
             )
             purchases[strategy.ticker]["buys"].append(buy_order.order_id)
             purchases[strategy.ticker]["min_price"] = buy_price
+        lots_to_sell = positions[share["figi"]] // (
+            candle_close * strategy.step_amount * share["lot"]
+        )
+        for i in range(1, lots_to_sell + 1):
             sell_price = candle_close * (1 + (strategy.step_trigger / 100) * i)
-            sell_price -= sell_price % share["min_price_increment"]
-            sell_order = await create_order(
-                figi=share["figi"],
-                price=sell_price,
-                quantity=strategy.step_amount,
-                direction=OrderDirection.ORDER_DIRECTION_SELL,
-                order_type=OrderType.ORDER_TYPE_LIMIT,
-                client=client,
-            )
-            purchases[strategy.ticker]["sells"].append(sell_order.order_id)
-            purchases[strategy.ticker]["max_price"] = sell_price
-            message += f"Выставлена к продаже по цене {sell_price}\n"
-        if lots_quantity == 0:
-            sell_price = round(candle_close * (1 + (strategy.step_trigger / 100)), 9)
             sell_price -= sell_price % share["min_price_increment"]
             sell_order = await create_order(
                 figi=share["figi"],
@@ -325,6 +314,7 @@ async def market_review(
     messages_to_send = []
     async with AsyncClient(config.TINKOFF_TOKEN) as client:
         positions = await get_positions(client)
+        positions_dict = {position.figi: position for position in positions}
         shares = await get_shares(client, [strategy.ticker for strategy in strategies])
         strategies_as_shares = {share["ticker"]: share for share in shares}
         for strategy in strategies:
@@ -334,7 +324,7 @@ async def market_review(
                 strategy,
                 strategies_as_shares[strategy.ticker],
                 purchases,
-                positions,
+                positions_dict,
                 client,
             )
             messages_to_send.extend(messages)

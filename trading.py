@@ -1,11 +1,10 @@
 import asyncio
 import datetime
-from decimal import Decimal
-from typing import Optional, List, Dict
+from typing import List, Dict
 
 import aiogram
 from tinkoff.invest.services import InstrumentsService
-from tinkoff.invest.utils import decimal_to_quotation, quotation_to_decimal, now
+from tinkoff.invest.utils import quotation_to_decimal, now
 from tinkoff.invest import (
     CandleInterval,
     HistoricCandle,
@@ -18,17 +17,14 @@ from tinkoff.invest import (
     GetOrdersResponse,
     PositionsResponse,
     PositionsSecurities,
-    MoneyValue,
 )
 from tinkoff.invest.async_services import AsyncServices
 
 from config import Config
 from bot.db import (
     ShareStrategy,
-    add_share_strategy,
     get_session,
     get_share_strategies,
-    update_share_strategy,
 )
 
 
@@ -142,7 +138,9 @@ async def analize_strategy(
             strategy.max_capital // (candle_close * strategy.step_amount * share["lot"])
         )
         if lots_quantity == 0:
-            message = f"ПРЕДУПРЕЖДЕНИЕ\n\n{strategy.ticker} не выставилась на покупку, проверьте настройки стратегии"
+            messages_to_send.append(
+                f"ПРЕДУПРЕЖДЕНИЕ\n\n{strategy.ticker} не выставилась на покупку, проверьте настройки стратегии"
+            )
         message = f"ПОДГОТОВКА по {strategy.ticker}\n\n"
         for i in range(1, lots_quantity + 1):
             buy_price = candle_close * (1 - (strategy.step_trigger / 100) * i)
@@ -328,12 +326,4 @@ async def market_review(
                 client,
             )
             messages_to_send.extend(messages)
-        # await send_messages(messages_to_send, tg_bot, config.ADMIN_USERNAMES)
-
-    # strategies_tickers = [strategy.ticker for strategy in strategies]
-    # async with AsyncClient(config.TINKOFF_TOKEN) as client:
-    #     shares = await get_shares(client, strategies_tickers)
-    #     for share in shares:
-    #         trade = await analize_share(share, purchases)
-    # if trade is not None:
-    #     await send_message(tg_bot, trade)
+        await send_messages(messages_to_send, tg_bot, config.ADMIN_USERNAMES)

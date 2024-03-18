@@ -1,14 +1,16 @@
 import asyncio
+
 from aiogram import Bot, Dispatcher
 from aiogram.enums.parse_mode import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.redis import RedisStorage, Redis
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from tinkoff.invest import MoneyValue
+from tinkoff.invest.sandbox.client import SandboxClient
 
 from bot import prepare
 from config import Config
 from trading import market_review
-
 from bot.db import (
     add_share_strategy,
     get_session,
@@ -39,6 +41,18 @@ async def main() -> None:
     botname = (await bot.me()).username
     bot_url = f"https://t.me/{botname}"
     print(f"Bot url: {bot_url}")
+
+    with SandboxClient(config.SANDBOX_TOKEN) as sandbox_client:
+        sandbox_accounts = sandbox_client.users.get_accounts()
+        for sandbox_account in sandbox_accounts.accounts:
+            sandbox_client.sandbox.close_sandbox_account(account_id=sandbox_account.id)
+        sandbox_account = sandbox_client.sandbox.open_sandbox_account()
+        account_id = sandbox_account.account_id
+        sandbox_client.sandbox.sandbox_pay_in(
+            account_id=account_id,
+            amount=MoneyValue(units=2000000, nano=0, currency="rub"),
+        )
+
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
         market_review,
@@ -46,15 +60,7 @@ async def main() -> None:
         day_of_week="mon-fri",
         hour="10-23",
         minute="*",
-        args=[bot, strategies_data],
-    )
-    scheduler.add_job(
-        market_review,
-        "cron",
-        day_of_week="mon-fri",
-        hour="0",
-        minute="*",
-        args=[bot, strategies_data],
+        args=[sandbox_account, account_id, bot, strategies_data],
     )
     scheduler.start()
 

@@ -5,7 +5,6 @@ from pydantic import Field, RedisDsn, PostgresDsn
 class Config(BaseSettings):
     BOT_TOKEN: str = Field(validation_alias="BOT_TOKEN")
     TINKOFF_TOKEN: str = Field(validation_alias="TINKOFF_TOKEN")
-    SANDBOX_TOKEN: str = Field(validation_alias="SANDBOX_TOKEN")
     MOEX_WORKING_HOURS: range = range(10, 24)
 
     ADMIN_IDS: list[int] = []

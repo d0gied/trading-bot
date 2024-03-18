@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 from decimal import Decimal
 from typing import Optional, List, Dict
@@ -5,8 +6,10 @@ from typing import Optional, List, Dict
 import aiogram
 from tinkoff.invest.sandbox.client import SandboxClient
 from tinkoff.invest.services import InstrumentsService
-from tinkoff.invest.utils import decimal_to_quotation, quotation_to_decimal
+from tinkoff.invest.utils import decimal_to_quotation, quotation_to_decimal, now
 from tinkoff.invest import (
+    CandleInterval,
+    HistoricCandle,
     AsyncClient,
     OrderType,
     OrderState,
@@ -17,9 +20,6 @@ from tinkoff.invest import (
     MoneyValue,
 )
 from tinkoff.invest.async_services import AsyncServices
-from tradingview_ta import TA_Handler, Interval
-
-from tinkoff.invest.sandbox.client import SandboxClient
 
 from config import Config
 from bot.db import (
@@ -45,6 +45,19 @@ async def get_account_id(token: str):
 
 def moneyvalue_to_float(moneyvalue):
     return moneyvalue.units + moneyvalue.nano / 1_000_000_000
+
+
+async def get_last_candle(share: dict, client: AsyncClient) -> HistoricCandle:
+    last_candle = None
+    while last_candle is None:
+        async for candle in client.get_all_candles(
+            figi=share["figi"],
+            from_=now() - datetime.timedelta(minutes=1),
+            interval=CandleInterval.CANDLE_INTERVAL_1_MIN,
+        ):
+            last_candle = candle
+        await asyncio.sleep(5)
+    return last_candle
 
 
 async def get_shares(client: AsyncServices, tickers: List[str] = None) -> List[Dict]:
@@ -82,48 +95,34 @@ async def get_shares(client: AsyncServices, tickers: List[str] = None) -> List[D
     return shares
 
 
-async def order(
+async def create_order(
     figi: str,
     price: float,
     quantity: int,
-    direction: int,
+    direction: OrderDirection,
+    order_type: OrderType,
     client: AsyncClient,
-    order_type: int = OrderType.ORDER_TYPE_LIMIT,
 ) -> PostOrderResponse:
     account_id = await get_account_id(client)
-    made_order: PostOrderResponse = await client.orders.post_order(
+    order: PostOrderResponse = await client.orders.post_order(
         instrument_id=figi,
         account_id=account_id,
-        price=float_to_quotation(price),
+        price=price,
         quantity=quantity,
         direction=direction,
         order_type=order_type,
-        order_id=str(datetime.datetime.utcnow().timestamp()),
+        order_id=str(datetime.datetime.now(datetime.UTC).timestamp()),
     )
-    if made_order.execution_report_status != 1:
-        print(figi, made_order)
-    return made_order
+    if order.execution_report_status not in (1, 4):
+        print(figi, order)
+    return order
 
 
-def get_analysis(symbol: str):
-    try:
-        data = TA_Handler(
-            symbol=symbol,
-            screener="russia",
-            exchange="MOEX",
-            interval=Interval.INTERVAL_1_MINUTE,
-        )
-        analysis = data.get_analysis()
-        return analysis
-    except Exception:
-        return None
-
-
-def analize_strategy(
-    strategy: ShareStrategy, share: dict, purchases: dict, client: SandboxClient
+async def analize_strategy(
+    strategy: ShareStrategy, share: dict, purchases: dict, client: AsyncClient
 ) -> List[str]:
-    analysis = get_analysis(strategy.ticker)
-    candle_close: float = analysis.indicators["close"]
+    last_candle = await get_last_candle(share, client)
+    candle_close: float = float(quotation_to_decimal(last_candle.close))
     messages_to_send = []
     if strategy.ticker not in purchases.keys():
         # purchases[strategy.ticker]["last_price"] = candle_close
@@ -131,13 +130,13 @@ def analize_strategy(
         lots_quantity = int(
             strategy.max_capital // (candle_close * strategy.step_amount * share["lot"])
         )
-        market_buy_order = await order(
-            share["figi"],
-            candle_close,
-            lots_quantity * share["lot"],
-            OrderDirection.ORDER_DIRECTION_BUY,
-            client,
-            OrderType.ORDER_TYPE_MARKET,
+        market_buy_order = await create_order(
+            figi=share["figi"],
+            price=candle_close,
+            quantity=lots_quantity * share["lot"],
+            direction=OrderDirection.ORDER_DIRECTION_BUY,
+            order_type=OrderType.ORDER_TYPE_MARKET,
+            client=client,
         )
         purchases[strategy.ticker]["available"] -= moneyvalue_to_float(
             market_buy_order.total_order_amount
@@ -153,12 +152,13 @@ def analize_strategy(
             sell_price = round(
                 candle_close * (1 + (strategy.step_trigger / 100) * i), 9
             )
-            sell_order = await order(
-                share["figi"],
-                sell_price,
-                strategy.step_amount,
-                OrderDirection.ORDER_DIRECTION_SELL,
-                client,
+            sell_order = await create_order(
+                figi=share["figi"],
+                price=sell_price,
+                quantity=strategy.step_amount,
+                direction=OrderDirection.ORDER_DIRECTION_SELL,
+                order_type=OrderType.ORDER_TYPE_LIMIT,
+                client=client,
             )
             purchases[strategy.ticker]["sells"].append(sell_order.order_id)
             purchases[strategy.ticker]["max_price"] = sell_price
@@ -197,11 +197,12 @@ def analize_strategy(
                 if purchases[strategy.ticker]["available"] > (
                     new_buy_price * strategy.step_amount * share["lot"]
                 ):
-                    buy_order = await order(
+                    buy_order = await create_order(
                         share["figi"],
                         new_buy_price,
                         strategy.step_amount,
                         OrderDirection.ORDER_DIRECTION_BUY,
+                        OrderType.ORDER_TYPE_LIMIT,
                         client,
                     )
                     purchases[strategy.ticker]["buys"].append(buy_order.order_id)
@@ -236,11 +237,12 @@ def analize_strategy(
                 if purchases[strategy.ticker]["available"] > (
                     new_buy_price * strategy.step_amount * share["lot"]
                 ):
-                    buy_order = await order(
+                    buy_order = await create_order(
                         share["figi"],
                         new_buy_price,
                         strategy.step_amount,
                         OrderDirection.ORDER_DIRECTION_BUY,
+                        OrderType.ORDER_TYPE_LIMIT,
                         client,
                     )
                     purchases[strategy.ticker]["buys"].append(buy_order.order_id)
@@ -272,25 +274,18 @@ async def send_messages(
 
 
 async def market_review(
-    sandbox_client: SandboxClient,
-    sandbox_account_id: str,
     tg_bot: aiogram.Bot,
     purchases: Dict[str, Dict],
 ):
     config = Config()
     strategies = get_share_strategies(get_session())
     messages_to_send = []
-    async with AsyncClient(config.TINKOFF_TOKEN) as async_client:
-        shares = await get_shares(
-            async_client, [strategy.ticker for strategy in strategies]
-        )
+    async with AsyncClient(config.TINKOFF_TOKEN) as client:
+        shares = await get_shares(client, [strategy.ticker for strategy in strategies])
         strategies_as_shares = {share["ticker"]: share for share in shares}
         for strategy in strategies:
-            messages = analize_strategy(
-                strategy,
-                strategies_as_shares[strategy.ticker],
-                purchases,
-                sandbox_client,
+            messages = await analize_strategy(
+                strategy, strategies_as_shares[strategy.ticker], purchases, client
             )
             messages_to_send.extend(messages)
         # await send_messages(messages_to_send, tg_bot, config.ADMIN_USERNAMES)

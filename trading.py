@@ -141,6 +141,7 @@ async def analize_strategy(
         lots_to_buy = int(
             strategy.max_capital // (candle_close * strategy.step_amount * share["lot"])
         )
+        lots_to_buy = max(lots_to_buy, 5)
         print(f"lots_to_buy: {lots_to_buy}")
         if lots_to_buy == 0:
             messages_to_send.append(
@@ -151,12 +152,15 @@ async def analize_strategy(
             positions[share["figi"]]
             // (candle_close * strategy.step_amount * share["lot"])
         )
+        lots_to_sell = max(lots_to_sell, 5)
         if lots_to_sell == 0:
             messages_to_send.append(
                 f"ПРЕДУПРЕЖДЕНИЕ\n\n{strategy.ticker} не выставилась на продажу, проверьте аккаунт"
             )
             print(f"{strategy.ticker} не выставлился на продажу, не хватает закупок")
         message = ""
+        purchases[strategy.ticker]["buys"] = []
+        purchases[strategy.ticker]["sells"] = []
         for i in range(1, lots_to_buy + 1):
             buy_price = candle_close * (1 - (strategy.step_trigger / 100) * i)
             buy_price -= buy_price % share["min_price_increment"]

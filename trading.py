@@ -192,6 +192,7 @@ async def analize_strategy(
             account_id=await get_account_id(client)
         )
         active_orders_ids = [order.order_id for order in active_orders.orders]
+        print(purchases[strategy.ticker])
         sells_ids = purchases[strategy.ticker]["sells"]
         for sell_id in sells_ids:
             if sell_id not in active_orders_ids:

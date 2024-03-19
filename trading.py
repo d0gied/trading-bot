@@ -163,9 +163,9 @@ async def analize_strategy(
         lots_to_buy = min(lots_to_buy, 5)
         print(f"lots_to_buy: {lots_to_buy}")
         if lots_to_buy == 0:
-            messages_to_send.append(
-                f"ПРЕДУПРЕЖДЕНИЕ\n\n{strategy.ticker} не выставилась на покупку, проверьте настройки стратегии"
-            )
+            # messages_to_send.append(
+            #     f"ПРЕДУПРЕЖДЕНИЕ\n\n{strategy.ticker} не выставилась на покупку, проверьте настройки стратегии"
+            # )
             print(f"{strategy.ticker} не выставился на покупку, не хватает баланса")
         for i in range(1, lots_to_buy + 1):
             buy_price = last_price * (1 - (strategy.step_trigger / 100) * i)
@@ -192,9 +192,9 @@ async def analize_strategy(
             )
             lots_to_sell = min(lots_to_sell, 5)
             if lots_to_sell == 0:
-                messages_to_send.append(
-                    f"ПРЕДУПРЕЖДЕНИЕ\n\n{strategy.ticker} не выставилась на продажу"
-                )
+                # messages_to_send.append(
+                #     f"ПРЕДУПРЕЖДЕНИЕ\n\n{strategy.ticker} не выставилась на продажу"
+                # )
                 print(f"{strategy.ticker} не выставился на продажу, не хватает закупок")
             for i in range(1, lots_to_sell + 1):
                 sell_price = last_price * (1 + (strategy.step_trigger / 100) * i)

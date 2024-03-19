@@ -45,20 +45,6 @@ def moneyvalue_to_float(moneyvalue):
     return moneyvalue.units + moneyvalue.nano / 1_000_000_000
 
 
-async def get_last_candle(share: dict, client: AsyncClient) -> HistoricCandle:
-    last_candle = None
-    while last_candle is None:
-        async for candle in client.get_all_candles(
-            figi=share["figi"],
-            from_=now() - datetime.timedelta(minutes=2),
-            interval=CandleInterval.CANDLE_INTERVAL_1_MIN,
-        ):
-            print(last_candle)
-            last_candle = candle
-        await asyncio.sleep(5)
-    return last_candle
-
-
 async def get_shares(client: AsyncServices, tickers: List[str] = None) -> List[Dict]:
     """Get shares from Tinkoff API by tickers or all of them"""
     instruments: InstrumentsService = client.instruments
@@ -156,10 +142,10 @@ async def analize_strategy(
         purchases[strategy.ticker]["sells"] = []
         purchases[strategy.ticker]["available"] = strategy.max_capital
         purchases[strategy.ticker]["min_price"] = last_price * (
-            1 - (strategy.step_trigger / 100)
+            1 - strategy.step_trigger
         )
         purchases[strategy.ticker]["max_price"] = last_price * (
-            1 + (strategy.step_trigger / 100)
+            1 + strategy.step_trigger
         )
         lots_to_buy = int(
             strategy.max_capital // (last_price * strategy.step_amount * share["lot"])
@@ -173,7 +159,7 @@ async def analize_strategy(
             print(f"{strategy.ticker} не выставился на покупку, не хватает баланса")
         for i in range(1, lots_to_buy + 1):
             print(last_price)
-            buy_price = last_price * (1 - (strategy.step_trigger / 100) * i)
+            buy_price = last_price * (1 - strategy.step_trigger * i)
             print(buy_price)
             buy_price -= buy_price % share["min_price_increment"]
             print(buy_price)
@@ -208,7 +194,7 @@ async def analize_strategy(
                 # )
                 print(f"{strategy.ticker} не выставился на продажу, не хватает закупок")
             for i in range(1, lots_to_sell + 1):
-                sell_price = last_price * (1 + (strategy.step_trigger / 100) * i)
+                sell_price = last_price * (1 + strategy.step_trigger * i)
                 sell_price -= sell_price % share["min_price_increment"]
                 sell_price = round(sell_price, 5)
                 sell_order = await create_order(
@@ -259,7 +245,7 @@ async def analize_strategy(
                     print(
                         f"{strategy.ticker} отменилась покупка по цене {purchases[strategy.ticker]['min_price']}"
                     )
-                koef = 1 + (strategy.step_trigger / 100)
+                koef = 1 + strategy.step_trigger
                 new_buy_price = purchases[strategy.ticker]["min_price"] * koef
                 new_sell_price = purchases[strategy.ticker]["max_price"] * koef
                 new_sell_price -= new_sell_price % share["min_price_increment"]
@@ -319,7 +305,7 @@ async def analize_strategy(
                         f"{strategy.ticker} отменилась продажа по цене {purchases[strategy.ticker]['max_price']}"
                     )
                     message += f"Отменена к продаже по цене {purchases[strategy.ticker]['max_price']}"
-                koef = 1 - (strategy.step_trigger / 100)
+                koef = 1 - strategy.step_trigger
                 new_buy_price = purchases[strategy.ticker]["min_price"] * koef
                 new_sell_price = purchases[strategy.ticker]["max_price"] * koef
                 new_sell_price -= new_sell_price % share["min_price_increment"]

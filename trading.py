@@ -147,7 +147,7 @@ async def analize_strategy(
             messages_to_send.append(
                 f"ПРЕДУПРЕЖДЕНИЕ\n\n{strategy.ticker} не выставилась на покупку, проверьте настройки стратегии"
             )
-            print(f"{strategy.ticker} не выставлился на покупку, не хватает баланса")
+            print(f"{strategy.ticker} не выставился на покупку, не хватает баланса")
         lots_to_sell = int(
             positions[share["figi"]]
             // (candle_close * strategy.step_amount * share["lot"])
@@ -157,7 +157,7 @@ async def analize_strategy(
             messages_to_send.append(
                 f"ПРЕДУПРЕЖДЕНИЕ\n\n{strategy.ticker} не выставилась на продажу, проверьте аккаунт"
             )
-            print(f"{strategy.ticker} не выставлился на продажу, не хватает закупок")
+            print(f"{strategy.ticker} не выставился на продажу, не хватает закупок")
         message = ""
         purchases[strategy.ticker]["buys"] = []
         purchases[strategy.ticker]["sells"] = []
@@ -213,11 +213,10 @@ async def analize_strategy(
                 purchases[strategy.ticker]["available"] += moneyvalue_to_float(
                     selled_order.executed_order_price
                 )
-                purchases[strategy.ticker]["sells"].pop(sell_id)
+                purchases[strategy.ticker]["sells"].remove(sell_id)
                 message = f"СДЕЛКА по {strategy.ticker}\n\nПродажа по цене {moneyvalue_to_float(selled_order.average_position_price)}"
                 if purchases[strategy.ticker]["buys"]:
-                    buy_id_to_cancel = purchases[strategy.ticker]["buys"][-1]
-                    purchases[strategy.ticker]["buys"].pop(buy_id_to_cancel)
+                    buy_id_to_cancel = purchases[strategy.ticker]["buys"].pop()
                     await client.orders.cancel_order(
                         account_id=await get_account_id(client),
                         order_id=buy_id_to_cancel,
@@ -279,11 +278,10 @@ async def analize_strategy(
                     account_id=await get_account_id(client),
                     order_id=buy_id,
                 )
-                purchases[strategy.ticker]["buys"].pop(buy_id)
+                purchases[strategy.ticker]["buys"].remove(buy_id)
                 message = f"СДЕЛКА по {strategy.ticker}\n\nПокупка по цене {moneyvalue_to_float(bought_order.average_position_price)}"
                 if purchases[strategy.ticker]["sells"]:
-                    sell_id_to_cancel = purchases[strategy.ticker]["sells"][-1]
-                    purchases[strategy.ticker]["sell"].pop(sell_id_to_cancel)
+                    sell_id_to_cancel = purchases[strategy.ticker]["sell"].pop()
                     await client.orders.cancel_order(
                         account_id=await get_account_id(client),
                         order_id=sell_id_to_cancel,

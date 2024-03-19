@@ -144,6 +144,7 @@ async def analize_strategy(
     print("Positions:", positions)
     if positions.get(share["figi"]) is None:
         print(f"{strategy.ticker} не в портфеле")
+        messages_to_send.append("ПРЕДУПРЕЖДЕНИЕ\n\n{strategy.ticker} не в портфеле")
         return messages_to_send
     if not purchases.get(strategy.ticker):
         purchases[strategy.ticker]["available"] = strategy.max_capital

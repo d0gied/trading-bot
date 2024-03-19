@@ -174,7 +174,9 @@ async def analize_strategy(
             )
             print(f"{strategy.ticker} выставился на покупку по цене {buy_price}")
             message += f"Выставлена к покупке по цене {buy_price}\n"
-            purchases[strategy.ticker]["available"] -= buy_price * strategy.step_amount * share["lot"]
+            purchases[strategy.ticker]["available"] -= (
+                buy_price * strategy.step_amount * share["lot"]
+            )
             purchases[strategy.ticker]["buys"].append(buy_order.order_id)
             purchases[strategy.ticker]["min_price"] = buy_price
         if positions.get(share["figi"]) is not None:
@@ -351,9 +353,9 @@ async def send_messages(
     for admin in admin_usernames:
         for message in messages:
             try:
-                await tg_bot.send_message(f'@{admin}', message)
+                await tg_bot.send_message(f"@{admin}", message)
             except Exception as e:
-                print(e)б
+                print(e)
 
 
 def serialize_purchases(purchases: Dict[str, Dict]):

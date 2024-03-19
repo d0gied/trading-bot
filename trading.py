@@ -1,3 +1,4 @@
+import json
 import asyncio
 import datetime
 from typing import List, Dict
@@ -168,8 +169,11 @@ async def analize_strategy(
             # )
             print(f"{strategy.ticker} не выставился на покупку, не хватает баланса")
         for i in range(1, lots_to_buy + 1):
+            print(last_price)
             buy_price = last_price * (1 - (strategy.step_trigger / 100) * i)
+            print(buy_price)
             buy_price -= buy_price % share["min_price_increment"]
+            print(buy_price)
             buy_order = await create_order(
                 figi=share["figi"],
                 price=buy_price,
@@ -361,6 +365,12 @@ async def send_messages(
                 pass
 
 
+def serialize_purchases(purchases: Dict[str, Dict]):
+    """Serialize purchases to file"""
+    with open("purchases.json", "w", encoding="utf-8") as file:
+        file.write(json.dumps(purchases))
+
+
 async def market_review(
     tg_bot: aiogram.Bot,
     purchases: Dict[str, Dict],
@@ -387,3 +397,4 @@ async def market_review(
             )
             messages_to_send.extend(messages)
         await send_messages(messages_to_send, tg_bot, config.ADMIN_USERNAMES)
+        serialize_purchases(purchases)

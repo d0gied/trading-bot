@@ -132,6 +132,8 @@ async def analize_strategy(
     last_candle = await get_last_candle(share, client)
     candle_close: float = float(quotation_to_decimal(last_candle.close))
     messages_to_send = []
+    print(f"Анализ {strategy.ticker}")
+    print(purchases.get(strategy.ticker))
     if purchases.get(strategy.ticker) is None:
         purchases[strategy.ticker]["available"] = strategy.max_capital
         lots_to_buy = int(

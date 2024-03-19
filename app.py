@@ -10,6 +10,12 @@ from tinkoff.invest import AsyncClient
 from bot import prepare
 from config import Config
 from trading import market_review, get_positions
+from bot.db import (
+    add_share_strategy,
+    get_session,
+    get_share_strategies,
+    update_share_strategy,
+)
 
 config = Config()
 
@@ -34,10 +40,11 @@ async def main() -> None:
     botname = (await bot.me()).username
     bot_url = f"https://t.me/{botname}"
     print(f"Bot url: {bot_url}")
-    async with AsyncClient(config.TINKOFF_TOKEN) as client:
-        positions = await get_positions(client)
-        for position in positions:
-            print(position.figi, position.balance)
+    async with AsyncClient(token=config.TINKOFF_TOKEN) as client:
+        print("Getting positions...")
+        for position in await get_positions(client):
+            print(position)
+
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
         market_review,

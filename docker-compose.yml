@@ -35,6 +35,8 @@ services:
       - redis
     env_file:
       - .env
+    volumes:
+      - purchases.json:/app/purchases.json
 
 volumes:
   db-data:

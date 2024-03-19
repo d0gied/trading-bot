@@ -142,10 +142,10 @@ async def analize_strategy(
         purchases[strategy.ticker]["sells"] = []
         purchases[strategy.ticker]["available"] = strategy.max_capital
         purchases[strategy.ticker]["min_price"] = last_price * (
-            1 - strategy.step_trigger
+            1 - (strategy.step_trigger / 100)
         )
         purchases[strategy.ticker]["max_price"] = last_price * (
-            1 + strategy.step_trigger
+            1 + (strategy.step_trigger / 100)
         )
         lots_to_buy = int(
             strategy.max_capital // (last_price * strategy.step_amount * share["lot"])
@@ -159,7 +159,7 @@ async def analize_strategy(
             print(f"{strategy.ticker} не выставился на покупку, не хватает баланса")
         for i in range(1, lots_to_buy + 1):
             print(last_price)
-            buy_price = last_price * (1 - strategy.step_trigger * i)
+            buy_price = last_price * (1 - (strategy.step_trigger / 100) * i)
             print(buy_price)
             buy_price -= buy_price % share["min_price_increment"]
             print(buy_price)
@@ -194,7 +194,7 @@ async def analize_strategy(
                 # )
                 print(f"{strategy.ticker} не выставился на продажу, не хватает закупок")
             for i in range(1, lots_to_sell + 1):
-                sell_price = last_price * (1 + strategy.step_trigger * i)
+                sell_price = last_price * (1 + (strategy.step_trigger / 100) * i)
                 sell_price -= sell_price % share["min_price_increment"]
                 sell_price = round(sell_price, 5)
                 sell_order = await create_order(
@@ -245,7 +245,7 @@ async def analize_strategy(
                     print(
                         f"{strategy.ticker} отменилась покупка по цене {purchases[strategy.ticker]['min_price']}"
                     )
-                koef = 1 + strategy.step_trigger
+                koef = 1 + (strategy.step_trigger / 100)
                 new_buy_price = purchases[strategy.ticker]["min_price"] * koef
                 new_sell_price = purchases[strategy.ticker]["max_price"] * koef
                 new_sell_price -= new_sell_price % share["min_price_increment"]
@@ -305,7 +305,7 @@ async def analize_strategy(
                         f"{strategy.ticker} отменилась продажа по цене {purchases[strategy.ticker]['max_price']}"
                     )
                     message += f"Отменена к продаже по цене {purchases[strategy.ticker]['max_price']}"
-                koef = 1 - strategy.step_trigger
+                koef = 1 - (strategy.step_trigger / 100)
                 new_buy_price = purchases[strategy.ticker]["min_price"] * koef
                 new_sell_price = purchases[strategy.ticker]["max_price"] * koef
                 new_sell_price -= new_sell_price % share["min_price_increment"]

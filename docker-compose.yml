@@ -37,7 +37,8 @@ services:
       - .env
     volumes:
       # volume to file with purchases
-      - purchases.json:/app/purchases.json:ro
+      - ./data/:/app/data/
+      
 
 volumes:
   db-data:

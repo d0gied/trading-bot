@@ -35,7 +35,7 @@ dp = prepare(dp)
 
 def deserialize_purchases() -> Dict[str, Dict]:
     """Deserialize purchases from file"""
-    with open("purchases.json", "r", encoding="utf-8") as file:
+    with open("data/purchases.json", "r", encoding="utf-8") as file:
         return json.loads(file.read())
 
 

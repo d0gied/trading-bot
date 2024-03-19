@@ -376,7 +376,7 @@ async def send_messages(
 
 def serialize_purchases(purchases: Dict[str, Dict]):
     """Serialize purchases to file"""
-    with open("purchases.json", "w", encoding="utf-8") as file:
+    with open("data/purchases.json", "w", encoding="utf-8") as file:
         file.write(json.dumps(purchases))
 
 

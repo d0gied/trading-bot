@@ -1,6 +1,7 @@
 import json
 import asyncio
 import datetime
+import math
 from typing import List, Dict
 
 import aiogram
@@ -174,6 +175,8 @@ async def analize_strategy(
             print(buy_price)
             buy_price -= buy_price % share["min_price_increment"]
             print(buy_price)
+            buy_price = round(buy_price, 5)
+            print(buy_price)
             buy_order = await create_order(
                 figi=share["figi"],
                 price=buy_price,
@@ -203,6 +206,7 @@ async def analize_strategy(
             for i in range(1, lots_to_sell + 1):
                 sell_price = last_price * (1 + (strategy.step_trigger / 100) * i)
                 sell_price -= sell_price % share["min_price_increment"]
+                sell_price = round(sell_price, 5)
                 sell_order = await create_order(
                     figi=share["figi"],
                     price=sell_price,
@@ -316,6 +320,8 @@ async def analize_strategy(
                 new_sell_price = purchases[strategy.ticker]["max_price"] * koef
                 new_sell_price -= new_sell_price % share["min_price_increment"]
                 new_buy_price -= new_buy_price % share["min_price_increment"]
+                new_buy_price = round(new_buy_price, 5)
+                new_sell_price = round(new_sell_price, 5)
                 sell_order = await create_order(
                     figi=share["figi"],
                     price=new_sell_price,

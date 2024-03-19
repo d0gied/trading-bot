@@ -56,6 +56,7 @@ async def main() -> None:
         hour="10-23",
         minute="*",
         args=[bot, strategies_data],
+        timezone="Europe/Moscow",
     )
     scheduler.start()
 

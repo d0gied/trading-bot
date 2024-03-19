@@ -112,6 +112,18 @@ async def get_positions(client: AsyncClient) -> List[PositionsSecurities]:
     return positions.securities
 
 
+async def cancel_all_orders(client: AsyncClient):
+    account_id = await get_account_id(client)
+    active_orders: GetOrdersResponse = await client.orders.get_orders(
+        account_id=account_id
+    )
+    for order in active_orders.orders:
+        await client.orders.cancel_order(
+            account_id=account_id,
+            order_id=order.order_id,
+        )
+
+
 async def analize_strategy(
     strategy: ShareStrategy,
     share: dict,

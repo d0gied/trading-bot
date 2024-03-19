@@ -44,6 +44,9 @@ async def main() -> None:
         print("Getting positions...")
         for position in await get_positions(client):
             print(position)
+    with get_session() as session:
+        for strategy in get_share_strategies(session):
+            print(strategy)
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(

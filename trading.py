@@ -141,6 +141,7 @@ async def analize_strategy(
         lots_to_buy = int(
             strategy.max_capital // (candle_close * strategy.step_amount * share["lot"])
         )
+        print(f"lots_to_buy: {lots_to_buy}")
         if lots_to_buy == 0:
             messages_to_send.append(
                 f"ПРЕДУПРЕЖДЕНИЕ\n\n{strategy.ticker} не выставилась на покупку, проверьте настройки стратегии"

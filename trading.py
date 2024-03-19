@@ -103,6 +103,8 @@ async def create_order(
     client: AsyncClient,
 ) -> PostOrderResponse:
     account_id = await get_account_id(client)
+    price = str(round(price, 2))
+    print(f"Создание ордера на {figi} по цене {price}")
     order: PostOrderResponse = await client.orders.post_order(
         instrument_id=figi,
         account_id=account_id,

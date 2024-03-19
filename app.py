@@ -52,7 +52,7 @@ async def main() -> None:
         for position in await get_positions(client):
             print(position)
         if True:
-            cancel_all_orders(client)
+            await cancel_all_orders(client)
     with get_session() as session:
         for strategy in get_share_strategies(session):
             print(strategy.ticker)

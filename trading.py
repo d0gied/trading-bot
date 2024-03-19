@@ -48,9 +48,10 @@ async def get_last_candle(share: dict, client: AsyncClient) -> HistoricCandle:
     while last_candle is None:
         async for candle in client.get_all_candles(
             figi=share["figi"],
-            from_=now() - datetime.timedelta(minutes=1),
+            from_=now() - datetime.timedelta(minutes=2),
             interval=CandleInterval.CANDLE_INTERVAL_1_MIN,
         ):
+            print(last_candle)
             last_candle = candle
         await asyncio.sleep(5)
     return last_candle
@@ -129,8 +130,13 @@ async def analize_strategy(
     positions: Dict[str, PositionsSecurities],
     client: AsyncClient,
 ) -> List[str]:
-    last_candle = await get_last_candle(share, client)
-    candle_close: float = float(quotation_to_decimal(last_candle.close))
+    last_price = float(
+        quotation_to_decimal(
+            (await client.market_data.get_last_prices(figi=[share["figi"]]))
+            .last_prices[0]
+            .price
+        )
+    )
     messages_to_send = []
     print(f"Анализ {strategy.ticker}")
     print(purchases.get(strategy.ticker))
@@ -138,11 +144,11 @@ async def analize_strategy(
     print("Positions:", positions)
     if positions.get(share["figi"]) is None:
         print(f"{strategy.ticker} не в портфеле")
-        return
+        return messages_to_send
     if not purchases.get(strategy.ticker):
         purchases[strategy.ticker]["available"] = strategy.max_capital
         lots_to_buy = int(
-            strategy.max_capital // (candle_close * strategy.step_amount * share["lot"])
+            strategy.max_capital // (last_price * strategy.step_amount * share["lot"])
         )
         lots_to_buy = min(lots_to_buy, 5)
         print(f"lots_to_buy: {lots_to_buy}")
@@ -153,7 +159,7 @@ async def analize_strategy(
             print(f"{strategy.ticker} не выставился на покупку, не хватает баланса")
         lots_to_sell = int(
             positions[share["figi"]].balance
-            // (candle_close * strategy.step_amount * share["lot"])
+            // (last_price * strategy.step_amount * share["lot"])
         )
         lots_to_sell = min(lots_to_sell, 5)
         if lots_to_sell == 0:
@@ -165,7 +171,7 @@ async def analize_strategy(
         purchases[strategy.ticker]["buys"] = []
         purchases[strategy.ticker]["sells"] = []
         for i in range(1, lots_to_buy + 1):
-            buy_price = candle_close * (1 - (strategy.step_trigger / 100) * i)
+            buy_price = last_price * (1 - (strategy.step_trigger / 100) * i)
             buy_price -= buy_price % share["min_price_increment"]
             buy_order = await create_order(
                 figi=share["figi"],
@@ -183,7 +189,7 @@ async def analize_strategy(
             purchases[strategy.ticker]["buys"].append(buy_order.order_id)
             purchases[strategy.ticker]["min_price"] = buy_price
         for i in range(1, lots_to_sell + 1):
-            sell_price = candle_close * (1 + (strategy.step_trigger / 100) * i)
+            sell_price = last_price * (1 + (strategy.step_trigger / 100) * i)
             sell_price -= sell_price % share["min_price_increment"]
             sell_order = await create_order(
                 figi=share["figi"],

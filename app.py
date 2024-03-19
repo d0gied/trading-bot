@@ -46,7 +46,7 @@ async def main() -> None:
             print(position)
     with get_session() as session:
         for strategy in get_share_strategies(session):
-            print(strategy)
+            print(strategy.ticker)
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(

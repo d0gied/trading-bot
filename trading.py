@@ -112,12 +112,6 @@ async def get_positions(client: AsyncClient) -> List[PositionsSecurities]:
     return positions.securities
 
 
-def float_to_quotation(value):
-    units = int(value)
-    nano = int((value - units + 1e-10) * 1_000_000_000)
-    return Quotation(units=units, nano=nano)
-
-
 async def analize_strategy(
     strategy: ShareStrategy,
     share: dict,
@@ -180,9 +174,7 @@ async def analize_strategy(
             )
             print(f"{strategy.ticker} выставился на покупку по цене {buy_price}")
             message += f"Выставлена к покупке по цене {buy_price}\n"
-            purchases[strategy.ticker]["available"] -= moneyvalue_to_float(
-                buy_price * strategy.step_amount * share["lot"]
-            )
+            purchases[strategy.ticker]["available"] -= buy_price * strategy.step_amount * share["lot"]
             purchases[strategy.ticker]["buys"].append(buy_order.order_id)
             purchases[strategy.ticker]["min_price"] = buy_price
         if positions.get(share["figi"]) is not None:

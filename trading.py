@@ -136,6 +136,9 @@ async def analize_strategy(
     print(purchases.get(strategy.ticker))
     print("Share:", share)
     print("Positions:", positions)
+    if positions.get(share["figi"]) is None:
+        print(f"{strategy.ticker} не в портфеле")
+        return
     if not purchases.get(strategy.ticker):
         purchases[strategy.ticker]["available"] = strategy.max_capital
         lots_to_buy = int(

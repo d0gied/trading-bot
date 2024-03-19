@@ -134,6 +134,7 @@ async def analize_strategy(
     messages_to_send = []
     print(f"Анализ {strategy.ticker}")
     print(purchases.get(strategy.ticker))
+    print("Share:", share)
     if not purchases.get(strategy.ticker):
         purchases[strategy.ticker]["available"] = strategy.max_capital
         lots_to_buy = int(

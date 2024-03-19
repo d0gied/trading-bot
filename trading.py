@@ -112,12 +112,16 @@ async def get_positions(client: AsyncClient) -> List[PositionsSecurities]:
     return positions.securities
 
 
-async def cancel_all_orders(client: AsyncClient):
+async def cancel_all_orders(client: AsyncServices):
     account_id = await get_account_id(client)
     active_orders: GetOrdersResponse = await client.orders.get_orders(
         account_id=account_id
     )
     for order in active_orders.orders:
+        print(f"Отмена ордера {order.order_id}")
+        print(
+            f"Отмена ордера {order.order_id} на {order.figi} по цене {moneyvalue_to_float(order.initial_order_price)}"  # noqa
+        )
         await client.orders.cancel_order(
             account_id=account_id,
             order_id=order.order_id,

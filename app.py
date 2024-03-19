@@ -33,13 +33,7 @@ dp = Dispatcher(storage=redis_storage)
 dp = prepare(dp)
 
 
-def serialize_purchases(purchases: Dict[str, Dict]):
-    """Serialize purchases to file"""
-    with open("purchases.json", "w", encoding="utf-8") as file:
-        file.write(json.dumps(purchases))
-
-
-def deserialize_purchases():
+def deserialize_purchases() -> Dict[str, Dict]:
     """Deserialize purchases from file"""
     with open("purchases.json", "r", encoding="utf-8") as file:
         return json.loads(file.read())
@@ -70,12 +64,6 @@ async def main() -> None:
         minute="*",
         args=[bot, strategies_data],
         timezone="Europe/Moscow",
-    )
-    scheduler.add_job(
-        serialize_purchases,
-        "cron",
-        second="30",
-        args=[strategies_data],
     )
     scheduler.start()
 

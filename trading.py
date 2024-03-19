@@ -351,9 +351,9 @@ async def send_messages(
     for admin in admin_usernames:
         for message in messages:
             try:
-                await tg_bot.send_message(admin, message)
+                await tg_bot.send_message(f'@{admin}', message)
             except Exception as e:
-                print(e)
+                print(e)б
 
 
 def serialize_purchases(purchases: Dict[str, Dict]):

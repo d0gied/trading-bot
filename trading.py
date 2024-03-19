@@ -177,6 +177,8 @@ async def analize_strategy(
             print(buy_price)
             buy_price = round(buy_price, 5)
             print(buy_price)
+            print(f"buy_price: {buy_price}")
+            print(f"step_amount: {strategy.step_amount}")
             buy_order = await create_order(
                 figi=share["figi"],
                 price=buy_price,

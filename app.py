@@ -11,13 +11,12 @@ from tinkoff.invest import AsyncClient
 
 from bot import prepare
 from config import Config
-from trading import market_review, get_positions
+from trading import market_review, get_positions, cancel_all_orders
 from bot.db import (
     add_share_strategy,
     get_session,
     get_share_strategies,
     update_share_strategy,
-    cancel_all_orders,
 )
 
 config = Config()

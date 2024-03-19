@@ -89,12 +89,11 @@ async def create_order(
     client: AsyncClient,
 ) -> PostOrderResponse:
     account_id = await get_account_id(client)
-    price = str(round(price, 2))
     print(f"Создание ордера на {figi} по цене {price}")
     order: PostOrderResponse = await client.orders.post_order(
         instrument_id=figi,
         account_id=account_id,
-        price=price,
+        price=float_to_quotation(price),
         quantity=quantity,
         direction=direction,
         order_type=order_type,
@@ -111,6 +110,12 @@ async def get_positions(client: AsyncClient) -> List[PositionsSecurities]:
         account_id=account_id
     )
     return positions.securities
+
+
+def float_to_quotation(value):
+    units = int(value)
+    nano = int((value - units + 1e-10) * 1_000_000_000)
+    return Quotation(units=units, nano=nano)
 
 
 async def analize_strategy(
@@ -158,12 +163,10 @@ async def analize_strategy(
             # )
             print(f"{strategy.ticker} не выставился на покупку, не хватает баланса")
         for i in range(1, lots_to_buy + 1):
-            print(last_price)
+            print(last_price, share["min_price_increment"])
             buy_price = last_price * (1 - (strategy.step_trigger / 100) * i)
             print(buy_price)
             buy_price -= buy_price % share["min_price_increment"]
-            print(buy_price)
-            buy_price = round(buy_price, 5)
             print(buy_price)
             print(f"buy_price: {buy_price}")
             print(f"step_amount: {strategy.step_amount}")

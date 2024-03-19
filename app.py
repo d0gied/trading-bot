@@ -74,7 +74,7 @@ async def main() -> None:
     scheduler.add_job(
         serialize_purchases,
         "cron",
-        second="30",
+        second="5",
         args=[strategies_data],
     )
     scheduler.start()

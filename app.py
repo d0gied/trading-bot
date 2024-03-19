@@ -60,7 +60,7 @@ async def main() -> None:
         market_review,
         "cron",
         day_of_week="mon-fri",
-        hour="10-24",
+        hour="10-23",
         minute="*",
         args=[bot, strategies_data],
         timezone="Europe/Moscow",

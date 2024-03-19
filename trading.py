@@ -360,8 +360,8 @@ async def send_messages(
         for message in messages:
             try:
                 await tg_bot.send_message(admin, message)
-            except Exception:
-                pass
+            except Exception as e:
+                print(e)
 
 
 def serialize_purchases(purchases: Dict[str, Dict]):

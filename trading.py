@@ -348,6 +348,7 @@ async def market_review(
         positions_dict = {position.figi: position for position in positions}
         shares = await get_shares(client, [strategy.ticker for strategy in strategies])
         strategies_as_shares = {share["ticker"]: share for share in shares}
+        print(strategies)
         for strategy in strategies:
             print(f"Проверка {strategy.ticker}")
             if purchases.get(strategy.ticker) is None:

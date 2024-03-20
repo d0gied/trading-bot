@@ -363,13 +363,11 @@ async def analize_strategy(
     return messages_to_send
 
 
-async def send_messages(
-    messages: List[str], tg_bot: aiogram.Bot, admin_usernames: Config
-):
-    for admin in admin_usernames:
+async def send_messages(messages: List[str], tg_bot: aiogram.Bot, admin_ids: Config):
+    for admin in admin_ids:
         for message in messages:
             try:
-                await tg_bot.send_message(f"@{admin}", message)
+                await tg_bot.send_message(admin, message)
             except Exception as e:
                 print(e)
 
@@ -405,5 +403,5 @@ async def market_review(
                 client,
             )
             messages_to_send.extend(messages)
-        await send_messages(messages_to_send, tg_bot, config.ADMIN_USERNAMES)
+        await send_messages(messages_to_send, tg_bot, config.ADMIN_IDS)
         serialize_purchases(purchases)

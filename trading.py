@@ -31,12 +31,13 @@ from bot.db import (
 
 
 def float_to_quotation(value):
-    units = int(value)
-    nano = int((value - units + 1e-10) * 1_000_000_000)
-    return Quotation(units=units, nano=nano)
+    units = math.floor(value)
+    nano = math.floor((value - units) * 1_000_000_000)
+
+    return Quotation(units=int(units), nano=int(nano))
 
 
-async def get_account_id(client: AsyncClient):
+async def get_account_id(client: AsyncServices):
     accounts = await client.users.get_accounts()
     return accounts.accounts[0].id
 
@@ -86,7 +87,7 @@ async def create_order(
     quantity: int,
     direction: OrderDirection,
     order_type: OrderType,
-    client: AsyncClient,
+    client: AsyncServices,
 ) -> PostOrderResponse:
     account_id = await get_account_id(client)
     print(f"Создание ордера на {figi} по цене {price}")
@@ -133,7 +134,7 @@ async def analize_strategy(
     share: dict,
     purchases: dict,
     positions: Dict[str, PositionsSecurities],
-    client: AsyncClient,
+    client: AsyncServices,
 ) -> List[str]:
     last_price = float(
         quotation_to_decimal(

@@ -95,7 +95,7 @@ async def create_order(
         instrument_id=figi,
         account_id=account_id,
         price=float_to_quotation(price),
-        quantity=quantity,
+        quantity=int(quantity),
         direction=direction,
         order_type=order_type,
         order_id=str(datetime.datetime.now(datetime.UTC).timestamp()),
@@ -193,16 +193,14 @@ async def analize_strategy(
                 client=client,
             )
         else:
-            print(f"Докупка не требуется")
+            print(f"{share['ticker']} Докупка не требуется")
             need_to_buy = 0
-        lots_to_buy = int(purchases[strategy.ticker]["available"] + need_to_buy)
+        lots_to_buy = int(current_amount + need_to_buy)
+        # lots_to_buy = (strategy.max_capital / 2) // (last_price * strategy.step_amount)
         print(f"lots_to_buy: {lots_to_buy}")
         for i in range(1, lots_to_buy + 1):
-            print(last_price, share["min_price_increment"])
             buy_price = last_price * (1 - (strategy.step_trigger / 100) * i)
-            print(buy_price)
             buy_price -= buy_price % share["min_price_increment"]
-            print(buy_price)
             print(f"buy_price: {buy_price}")
             print(f"step_amount: {strategy.step_amount}")
             buy_order = await create_order(
@@ -235,7 +233,6 @@ async def analize_strategy(
         for i in range(1, lots_to_sell + 1):
             sell_price = last_price * (1 + (strategy.step_trigger / 100) * i)
             sell_price -= sell_price % share["min_price_increment"]
-            sell_price = round(sell_price, 5)
             sell_order = await create_order(
                 figi=share["figi"],
                 price=sell_price,

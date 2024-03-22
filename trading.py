@@ -182,6 +182,7 @@ async def analize_strategy(
         need_to_buy = need_to_buy // last_price
         if need_to_buy > 0:
             print(f"Докупка {need_to_buy} лотов на сумму {need_to_buy * last_price}")
+            message += f"Докупка по рынку {need_to_buy} лотов на сумму {need_to_buy * last_price}\n"
             buy_order = await create_order(
                 figi=share["figi"],
                 price=0,  # маркет заявка игнорирует цену

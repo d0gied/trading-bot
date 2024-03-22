@@ -166,7 +166,7 @@ async def analize_strategy(
             (strategy.max_capital / 2)
             // (last_price * strategy.step_amount * share["lot"])
         )
-        lots_to_buy = min(lots_to_buy, 3)
+        # lots_to_buy = min(lots_to_buy, 3)
         print(f"lots_to_buy: {lots_to_buy}")
         if lots_to_buy == 0:
             # messages_to_send.append(
@@ -181,6 +181,9 @@ async def analize_strategy(
             direction=OrderDirection.ORDER_DIRECTION_BUY,
             order_type=OrderType.ORDER_TYPE_MARKET,
             client=client,
+        )
+        print(
+            f"{strategy.ticker} выставился на покупку по рынку [{lots_to_buy}: {strategy.step_amount * lots_to_buy}]"
         )
         for i in range(1, lots_to_buy + 1):
             print(last_price, share["min_price_increment"])

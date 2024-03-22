@@ -56,18 +56,18 @@ async def main() -> None:
     with get_session() as session:
         for strategy in get_share_strategies(session):
             print(strategy.ticker)
-    strategies_data = deserialize_purchases()
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(
-        market_review,
-        "cron",
-        day_of_week="mon-fri",
-        hour="10-23",
-        minute="*",
-        args=[bot, strategies_data],
-        timezone="Europe/Moscow",
-    )
-    scheduler.start()
+    # strategies_data = deserialize_purchases()
+    # scheduler = AsyncIOScheduler()
+    # scheduler.add_job(
+    #     market_review,
+    #     "cron",
+    #     day_of_week="mon-fri",
+    #     hour="10-23",
+    #     minute="*",
+    #     args=[bot, strategies_data],
+    #     timezone="Europe/Moscow",
+    # )
+    # scheduler.start()
 
     await dp.start_polling(bot)
 

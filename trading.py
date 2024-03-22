@@ -162,29 +162,39 @@ async def analize_strategy(
         purchases[strategy.ticker]["max_price"] = last_price * (
             1 + (strategy.step_trigger / 100)
         )
-        lots_to_buy = int(
-            (strategy.max_capital / 2)
-            // (last_price * strategy.step_amount * share["lot"])
-        )
+
+        current_amount = 0
+        current_balance = 0
+        if positions.get(share["figi"]) is not None:
+            current_amount = positions[share["figi"]].balance
+            current_balance = current_amount * last_price
+            print(f"Текущий баланс {current_balance}")
+        print(f"Доступно {purchases[strategy.ticker]['available']}")
+
         # lots_to_buy = min(lots_to_buy, 3)
-        print(f"lots_to_buy: {lots_to_buy}")
-        if lots_to_buy == 0:
-            # messages_to_send.append(
-            #     f"ПРЕДУПРЕЖДЕНИЕ\n\n{strategy.ticker} не выставилась на покупку, проверьте настройки стратегии"
-            # )
-            print(f"{strategy.ticker} не выставился на покупку, не хватает баланса")
+        # if lots_to_buy == 0:
+        #     # messages_to_send.append(
+        #     #     f"ПРЕДУПРЕЖДЕНИЕ\n\n{strategy.ticker} не выставилась на покупку, проверьте настройки стратегии"
+        #     # )
+        #     print(f"{strategy.ticker} не выставился на покупку, не хватает баланса")
         print(f"Закупка позиций {share['ticker']}")
-        buy_order = await create_order(
-            figi=share["figi"],
-            price=0,  # маркет заявка игнорирует цену
-            quantity=strategy.step_amount * lots_to_buy,
-            direction=OrderDirection.ORDER_DIRECTION_BUY,
-            order_type=OrderType.ORDER_TYPE_MARKET,
-            client=client,
-        )
-        print(
-            f"{strategy.ticker} выставился на покупку по рынку [{lots_to_buy}: {strategy.step_amount * lots_to_buy}]"
-        )
+        need_to_buy = strategy.max_capital / 2 - current_balance
+        need_to_buy = need_to_buy // last_price
+        if need_to_buy > 0:
+            print(f"Докупка {need_to_buy} лотов на сумму {need_to_buy * last_price}")
+            buy_order = await create_order(
+                figi=share["figi"],
+                price=0,  # маркет заявка игнорирует цену
+                quantity=need_to_buy,
+                direction=OrderDirection.ORDER_DIRECTION_BUY,
+                order_type=OrderType.ORDER_TYPE_MARKET,
+                client=client,
+            )
+        else:
+            print(f"Докупка не требуется")
+            need_to_buy = 0
+        lots_to_buy = int(purchases[strategy.ticker]["available"] + need_to_buy)
+        print(f"lots_to_buy: {lots_to_buy}")
         for i in range(1, lots_to_buy + 1):
             print(last_price, share["min_price_increment"])
             buy_price = last_price * (1 - (strategy.step_trigger / 100) * i)

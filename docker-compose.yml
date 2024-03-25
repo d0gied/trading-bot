@@ -22,7 +22,10 @@ services:
     volumes:
       - redis-data:/data
   bot:
-    build: .
+    build:
+      context: .
+      args:
+        - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     environment:
       BOT_TOKEN: ${BOT_TOKEN}
       REDIS_URL: redis://redis:6379

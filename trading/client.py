@@ -519,6 +519,8 @@ class InvestClient:
                 active_order, db_order, session, on_fill, on_reject, on_cancel
             )
 
+        session.commit()
+
         unactive_orders = (
             session.query(DBOrder)
             .filter((DBOrder.status == "created") | (DBOrder.status == "unknown"))

@@ -493,47 +493,37 @@ class InvestClient:
         on_cancel: Callable[[str], Coroutine] | None = None,
     ):
         session = get_session()
-        db_orders_amount = (
-            session.query(DBOrder)
-            .filter((DBOrder.status == "created") | (DBOrder.status == "unknown"))
-            .count()
-        )
-        active_orders = (
-            await self._client.orders.get_orders(
-                account_id=(await self.get_account()).id
-            )
-        ).orders
-
-        if not db_orders_amount:
-            logger.info("No orders to update")
-        else:
-            logger.info(f"Updating {db_orders_amount} orders")
-
-        for active_order in active_orders:
-            db_order = (
-                session.query(DBOrder)
-                .filter(DBOrder.order_id == active_order.order_id)
-                .first()
-            )
-            await self.process_order(
-                active_order, db_order, session, on_fill, on_reject, on_cancel
-            )
-
-        session.commit()
-
-        unactive_orders = (
+        db_orders = (
             session.query(DBOrder)
             .filter((DBOrder.status == "created") | (DBOrder.status == "unknown"))
             .all()
         )
 
-        for unactive_order in unactive_orders:
-            order_response = await self._client.orders.get_order_state(
-                account_id=unactive_order.account_id, order_id=unactive_order.order_id  # type: ignore
+        active_orders = (
+            await self._client.orders.get_orders(
+                account_id=(await self.get_account()).id
             )
-            await self.process_order(
-                order_response, unactive_order, session, on_fill, on_reject, on_cancel
-            )
+        ).orders
+        active_orders_ids = [active_order.order_id for active_order in active_orders]
+
+        if not db_orders:
+            logger.info("No orders to update")
+        else:
+            logger.info(f"Updating {len(db_orders)} orders")
+
+        for db_order in db_orders:
+            if db_order.order_id not in active_orders_ids:
+                order_response = await self._client.orders.get_order_state(
+                    account_id=db_order.account_id, order_id=db_order.order_id  # type: ignore
+                )
+                await self.process_order(
+                    order_response,
+                    db_order,
+                    session,
+                    on_fill,
+                    on_reject,
+                    on_cancel,
+                )
 
         session.commit()
         session.close()

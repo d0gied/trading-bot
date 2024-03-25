@@ -184,7 +184,7 @@ async def strategy1(ticker: str) -> list[PostOrderResponse]:
         logger.debug(f"Free shares: {free_shares}")
         zone_id = 1
         while free_shares >= int(strategy.step_amount):  # type: ignore
-            zone_down, zone_up = get_zone(с
+            zone_down, zone_up = get_zone(
                 last_price, float(strategy.step_trigger) / 100, zone_id  # type: ignore
             )
             zone_id += 1

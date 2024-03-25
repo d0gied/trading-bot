@@ -7,9 +7,6 @@ from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from pydantic import BaseModel
 
-from config import Config
-
-config = Config()  # type: ignore
 base: DeclarativeMeta = declarative_base()
 
 

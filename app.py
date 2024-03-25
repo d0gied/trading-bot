@@ -10,6 +10,7 @@ from aiogram.fsm.storage.redis import RedisStorage, Redis
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from loguru import logger
 from tinkoff.invest import AsyncClient
+from trading.client import get_client
 from trading.strategies import tick
 
 from bot import prepare
@@ -43,6 +44,8 @@ async def main() -> None:
     logger.info(f"Bot url: {bot_url}")
     for admin in config.ADMIN_IDS:
         logger.info(f"Admin id: {admin}")
+    async with get_client() as client:
+        logger.info(f"Client balance: {await client.get_balance()}")
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(

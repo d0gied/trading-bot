@@ -222,8 +222,8 @@ async def strategy1(ticker: str) -> list[PostOrderResponse]:
 async def strategy1_warmup(transaction: Transaction, strategy: ShareStrategy):
     ticker = str(strategy.ticker)
     logger.info(f"Warming up strategy 1 for {ticker}")
-    logger.debug(f"Current balance: {await transaction.client.get_balance()}")
-    logger.debug(f"Max capital: {strategy.max_capital}")
+    logger.info(f"Current balance: {await transaction.client.get_balance()}")
+    logger.info(f"Max capital: {strategy.max_capital}")
 
     if (await transaction.client.get_balance()).amount < float(strategy.max_capital):  # type: ignore
         raise ValueError(

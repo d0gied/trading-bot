@@ -9,5 +9,5 @@ WORKDIR /app
 COPY . .
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
-
+CMD ["alembic", "upgrade", "head"]
 CMD ["python", "app.py"]

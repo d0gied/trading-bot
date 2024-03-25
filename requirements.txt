@@ -10,3 +10,5 @@ python-dotenv
 sqlalchemy
 Levenshtein
 tradingview_ta
+loguru
+aiocache

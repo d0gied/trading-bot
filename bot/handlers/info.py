@@ -4,31 +4,17 @@ from aiogram.filters import callback_data
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InputMediaPhoto, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from ..db import (
-    add_share_strategy,
-    get_session,
-    get_share_strategies,
-    update_share_strategy,
-)
-from tinkoff.invest import (
-    AsyncClient,
-    OrderType,
-    OrderDirection,
-)
+from db import get_session
+from db.strategies import get_share_strategies
+from trading import InvestClient
 from Levenshtein import distance
 
 from config import Config
-from trading import get_shares
 
 from ..filters import IsPrivate, Admin
 
 router = Router(name=__name__)
 config = Config()
-
-
-async def _get_shares():
-    async with AsyncClient(config.TINKOFF_TOKEN) as client:
-        return await get_shares(client)
 
 
 @router.message(Command("info"), IsPrivate(), Admin())

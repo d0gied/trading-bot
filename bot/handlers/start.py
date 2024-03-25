@@ -1,8 +1,7 @@
-from aiogram import F, Router, types
-from aiogram.filters import Command, StateFilter
+from aiogram import Router
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InputMediaPhoto, Message
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import Message
 
 from ..filters import IsPrivate, Admin
 

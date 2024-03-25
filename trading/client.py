@@ -454,17 +454,30 @@ class InvestClient:
         on_cancel: Callable[[str], Coroutine] | None = None,
     ):
         session = get_session()
-        orders = (
-            session.query(DBOrder)
-            .filter((DBOrder.status == "created") | (DBOrder.status == "unknown"))
-            .all()
-        )
+        true_active = (
+            await self._client.orders.get_orders(
+                account_id=(await self.get_account()).id
+            )
+        ).orders
+        true_active_ids = [order.order_id for order in true_active]
+
+        orders = session.query(DBOrder).filter((DBOrder.status == "created")).all()
+        counter = 0
+        for order in orders:
+            if order.order_id not in true_active_ids:
+                counter += 1
+                order.status = "unknown"  # type: ignore
+        session.commit()
+        logger.info(f"New unknown orders: {counter}")
+
+        orders = session.query(DBOrder).filter((DBOrder.status == "unknown")).all()
+        limit = 40
         if not orders:
             logger.info("No orders to update")
         else:
-            logger.info(f"Updating {len(orders)} orders")
+            logger.info(f"Updating {min(len(orders), limit)} orders")
 
-        for order in orders:
+        for order in orders[:limit]:
             order_response = await self._client.orders.get_order_state(
                 account_id=order.account_id, order_id=order.order_id  # type: ignore
             )

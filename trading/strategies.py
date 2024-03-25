@@ -38,7 +38,11 @@ async def on_update(order_id: str):
             order.lots  # type: ignore
         )
         ticker = share.ticker
-        strategy = get_share_strategies(db, 1, ticker)[0]
+        strategy = get_share_strategies(db, 1, ticker)
+        if not strategy:
+            db.close()
+            return
+        strategy = strategy[0]
         strategy.free_capital = float(strategy.free_capital) + extra_balance.amount  # type: ignore
         db.commit()
         logger.debug(f"Returned {extra_balance} to free capital")

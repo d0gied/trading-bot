@@ -1,1 +1,1 @@
-alembic upgrade head && python app.py
+python app.py

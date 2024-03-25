@@ -234,6 +234,9 @@ async def strategy1_warmup(transaction: Transaction, strategy: ShareStrategy):
     last_price = await transaction.client.get_last_price(ticker=ticker)
     logger.debug(f"Current amount: {current_amount}")
     logger.debug(f"Last price: {last_price}")
+    share = await transaction.client.get_share_by_ticker(ticker)
+    if share is None:
+        raise ValueError(f"Share {ticker} not found")
 
     amount_to_buy = int(strategy.max_capital / 2 / last_price.amount)  # type: ignore
     if amount_to_buy == 0:
@@ -242,6 +245,7 @@ async def strategy1_warmup(transaction: Transaction, strategy: ShareStrategy):
     if amount_to_buy < 0:
         amount_to_buy = 0
     logger.debug(f"Amount to buy: {amount_to_buy}")
+    amount_to_buy %= share.lot
     if amount_to_buy > 0:
         await transaction.market_buy(ticker=ticker, lots=amount_to_buy)
     free_capital = strategy.max_capital - last_price.amount * (

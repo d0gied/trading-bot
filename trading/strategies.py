@@ -210,6 +210,9 @@ async def strategy1(ticker: str) -> list[PostOrderResponse]:
             if new_price < Quotation(current_price) * 0.8:
                 logger.info(f"Price is less than 80%: {new_price}")
                 break
+            if new_price > Quotation(current_price) * 1.2:
+                logger.info(f"Price is more than 120%: {new_price}")
+                break
 
             await transaction.limit_sell(
                 ticker=ticker, lots=int(strategy.step_amount), price=new_price  # type: ignore

@@ -46,6 +46,8 @@ async def main() -> None:
         logger.info(f"Admin id: {admin}")
     async with get_client() as client:
         logger.info(f"Client balance: {await client.get_balance()}")
+        for pos in await client.get_positions():
+            logger.info(f"Position: {pos}")
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(

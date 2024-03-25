@@ -172,7 +172,7 @@ async def strategy1(ticker: str) -> list[PostOrderResponse]:
                 logger.debug(f"Filled with orders: {len(orders)}")
                 continue
             new_price = Quotation(zone_down + zone_up) / 2
-            if new_price < Quotation(0):
+            if new_price < share.min_price_increment:
                 logger.error(f"Price is negative: {new_price}")
                 break
             amount = new_price * int(strategy.step_amount)  # type: ignore

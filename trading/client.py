@@ -81,6 +81,7 @@ class InvestClient:
         logger.debug("Health check passed")
 
     @check_opened
+    @cached(ttl=60, cache=Cache.MEMORY)
     async def get_account(self):
         response = await self._client.users.get_accounts()
         if not response.accounts:

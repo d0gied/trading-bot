@@ -23,6 +23,7 @@ from config import Config
 from loguru import logger
 from aiocache import cached, Cache  # type: ignore
 from .errors import InvestError
+from sqlalchemy.orm import Session
 
 from db.orders import add_order, update_order, Order as DBOrder
 from db import get_session
@@ -447,6 +448,44 @@ class InvestClient:
         ).operations
 
     @check_opened
+    async def process_order(
+        self,
+        order_response: OrderState,
+        db_order: DBOrder,
+        session: Session,
+        on_fill: Callable[[str], Coroutine] | None = None,
+        on_reject: Callable[[str], Coroutine] | None = None,
+        on_cancel: Callable[[str], Coroutine] | None = None,
+    ):
+        status = "unknown"
+        match order_response.execution_report_status:
+            case ExecutionStatus.EXECUTION_REPORT_STATUS_NEW:
+                status = "created"
+            case ExecutionStatus.EXECUTION_REPORT_STATUS_FILL:
+                status = "fill"
+            case ExecutionStatus.EXECUTION_REPORT_STATUS_REJECTED:
+                status = "rejected"
+            case ExecutionStatus.EXECUTION_REPORT_STATUS_CANCELLED:
+                status = "cancelled"
+            case ExecutionStatus.EXECUTION_REPORT_STATUS_PARTIALLYFILL:
+                status = "created"
+            case _:
+                status = "unknown"  # type: ignore
+        if str(status) != str(db_order.status):
+            update_order(session, UpdateOrder(order_id=db_order.order_id, status=status))  # type: ignore
+            logger.info(
+                f"Order {db_order.order_id} updated: {db_order.status} -> {status}"
+            )
+            if status == "fill" and on_fill is not None:
+                await on_fill(order_response.order_id)
+            if status == "rejected" and on_reject is not None:
+                await on_reject(order_response.order_id)
+            if status == "cancelled" and on_cancel is not None:
+                await on_cancel(order_response.order_id)
+        else:
+            logger.debug(f"Order {db_order.order_id} unchanged: {status}")
+
+    @check_opened
     async def update_orders(
         self,
         on_fill: Callable[[str], Coroutine] | None = None,
@@ -454,47 +493,37 @@ class InvestClient:
         on_cancel: Callable[[str], Coroutine] | None = None,
     ):
         session = get_session()
-        orders = (
+        db_orders = (
             session.query(DBOrder)
             .filter((DBOrder.status == "created") | (DBOrder.status == "unknown"))
             .all()
         )
-        if not orders:
+
+        active_orders = (
+            await self._client.orders.get_orders(
+                account_id=(await self.get_account()).id
+            )
+        ).orders
+        active_orders_ids = [active_order.order_id for active_order in active_orders]
+
+        if not db_orders:
             logger.info("No orders to update")
         else:
-            logger.info(f"Updating {len(orders)} orders")
+            logger.info(f"Updating {len(db_orders)} orders")
 
-        for order in orders:
-            order_response = await self._client.orders.get_order_state(
-                account_id=order.account_id, order_id=order.order_id  # type: ignore
-            )
-            status = "unknown"
-            match order_response.execution_report_status:
-                case ExecutionStatus.EXECUTION_REPORT_STATUS_NEW:
-                    status = "created"
-                case ExecutionStatus.EXECUTION_REPORT_STATUS_FILL:
-                    status = "fill"
-                case ExecutionStatus.EXECUTION_REPORT_STATUS_REJECTED:
-                    status = "rejected"
-                case ExecutionStatus.EXECUTION_REPORT_STATUS_CANCELLED:
-                    status = "cancelled"
-                case ExecutionStatus.EXECUTION_REPORT_STATUS_PARTIALLYFILL:
-                    status = "created"
-                case _:
-                    status = "unknown"  # type: ignore
-            if str(status) != str(order.status):
-                update_order(session, UpdateOrder(order_id=order.order_id, status=status))  # type: ignore
-                logger.info(
-                    f"Order {order.order_id} updated: {order.status} -> {status}"
+        for db_order in db_orders:
+            if db_order.order_id not in active_orders_ids:
+                order_response = await self._client.orders.get_order_state(
+                    account_id=db_order.account_id, order_id=db_order.order_id  # type: ignore
                 )
-                if status == "fill" and on_fill is not None:
-                    await on_fill(order_response.order_id)
-                if status == "rejected" and on_reject is not None:
-                    await on_reject(order_response.order_id)
-                if status == "cancelled" and on_cancel is not None:
-                    await on_cancel(order_response.order_id)
-            else:
-                logger.debug(f"Order {order.order_id} unchanged: {status}")
+                await self.process_order(
+                    order_response,
+                    db_order,
+                    session,
+                    on_fill,
+                    on_reject,
+                    on_cancel,
+                )
 
         session.commit()
         session.close()

@@ -1,7 +1,5 @@
-from dataclasses import dataclass
 import datetime
 from typing import Callable, Coroutine
-from webbrowser import Opera
 
 from db.models import AddOrder, UpdateOrder
 from .orders import Order, Direction, LimitOrder, MarketOrder, Quotation
@@ -18,6 +16,7 @@ from tinkoff.invest import (
     PositionsSecurities,
     PositionsResponse,
     Operation,
+    OrderState,
 )
 from tinkoff.invest.async_services import AsyncServices
 from config import Config
@@ -69,23 +68,17 @@ class InvestClient:
             raise ValueError("No accounts found")
         elif len(accounts) > 1:
             logger.warning("ACCOUNT: More than one account found")
-        else:
-            logger.info("ACCOUNT: One account found")
 
         account = accounts[0]
         if account.access_level != AccessLevel.ACCOUNT_ACCESS_LEVEL_FULL_ACCESS:
             logger.error("ACCESS: Account does not have full access")
             raise ValueError("Account does not have full access")
-        else:
-            logger.info("ACCESS: Full access granted")
 
         if account.status != AccountStatus.ACCOUNT_STATUS_OPEN:
             logger.error("AVAILABLE: Account is not open")
             raise ValueError("Account is not open")
-        else:
-            logger.info("AVAILABLE: Account is open")
 
-        logger.info("Health check passed")
+        logger.debug("Health check passed")
 
     @check_opened
     async def get_account(self):
@@ -168,6 +161,60 @@ class InvestClient:
             .last_prices[0]
             .price
         )
+
+    @check_opened
+    async def get_last_closed(self, ticker: str):
+        share = await self.get_share_by_ticker(ticker)
+        if share is None:
+            raise ValueError(f"Share {ticker} not found")
+        db = get_session()
+        today = datetime.datetime.now(datetime.timezone.utc)
+        today = today.replace(hour=1, minute=0, second=0, microsecond=0)
+        last = (
+            db.query(DBOrder)
+            .filter(
+                (DBOrder.figi == share.figi)
+                & (DBOrder.status == "fill")
+                & (DBOrder.type == "limit")
+                & (DBOrder.created_at > today)  # too old
+            )
+            .order_by(DBOrder.updated_at.desc())
+            .first()
+        )
+        db.close()
+        return last
+
+    @check_opened
+    async def get_order_info(self, order_id: str) -> OrderState:
+        return await self._client.orders.get_order_state(
+            account_id=(await self.get_account()).id,
+            order_id=order_id,
+        )
+
+    @check_opened
+    async def find_open_orders(self, ticker: str, from_: Quotation, to: Quotation):
+        share = await self.get_share_by_ticker(ticker)
+        if share is None:
+            raise ValueError(f"Share {ticker} not found")
+        db = get_session()
+        orders = (
+            db.query(DBOrder)
+            .filter(
+                (DBOrder.figi == share.figi)
+                & (DBOrder.status == "created")
+                & (
+                    DBOrder.price_units * 10**9 + DBOrder.price_nanos
+                    >= from_.units * 10**9 + from_.nano
+                )
+                & (
+                    DBOrder.price_units * 10**9 + DBOrder.price_nanos
+                    <= to.units * 10**9 + to.nano
+                )
+            )
+            .all()
+        )
+        db.close()
+        return orders
 
     @check_opened
     async def is_limit_available(self, ticker: str) -> bool:
@@ -327,6 +374,12 @@ class InvestClient:
 
     @check_opened
     async def cancel_order(self, order_id: str):
+        db = get_session()
+        order = db.query(DBOrder).filter_by(order_id=order_id).first()
+        if not order:
+            logger.error(f"Order {order_id} not found")
+            raise ValueError(f"Order {order_id} not found")
+
         await self._client.orders.cancel_order(
             account_id=(await self.get_account()).id,
             order_id=order_id,
@@ -368,14 +421,14 @@ class InvestClient:
         return 0
 
     @check_opened
-    async def get_balance(self, currency: str = "rub") -> Quotation | None:
+    async def get_balance(self, currency: str = "rub") -> Quotation:
         account_id = (await self.get_account()).id
         response = await self._client.operations.get_positions(account_id=account_id)
         money = response.money
         for position in money:
             if position.currency == currency:
                 return Quotation(position.units, position.nano)
-        return None
+        raise ValueError(f"Currency {currency} not found")
 
     async def get_history(
         self, ticker: str, from_: datetime.datetime, to: datetime.datetime
@@ -395,9 +448,9 @@ class InvestClient:
     @check_opened
     async def update_orders(
         self,
-        on_fill: Callable[[int], Coroutine] | None = None,
-        on_reject: Callable[[int], Coroutine] | None = None,
-        on_cancel: Callable[[int], Coroutine] | None = None,
+        on_fill: Callable[[str], Coroutine] | None = None,
+        on_reject: Callable[[str], Coroutine] | None = None,
+        on_cancel: Callable[[str], Coroutine] | None = None,
     ):
         session = get_session()
         orders = (
@@ -428,22 +481,52 @@ class InvestClient:
                     status = "created"
                 case _:
                     status = "unknown"  # type: ignore
-            if status != order.status:
+            if str(status) != str(order.status):
                 update_order(session, UpdateOrder(order_id=order.order_id, status=status))  # type: ignore
                 logger.info(
                     f"Order {order.order_id} updated: {order.status} -> {status}"
                 )
-                if status == "fill" and on_fill:
-                    await on_fill(order.id)  # type: ignore
-                if status == "rejected" and on_reject:
-                    await on_reject(order.id)  # type: ignore
-                if status == "cancelled" and on_cancel:
-                    await on_cancel(order.id)  # type: ignore
+                if status == "fill" and on_fill is not None:
+                    await on_fill(order_response.order_id)
+                if status == "rejected" and on_reject is not None:
+                    await on_reject(order_response.order_id)
+                if status == "cancelled" and on_cancel is not None:
+                    await on_cancel(order_response.order_id)
             else:
                 logger.debug(f"Order {order.order_id} unchanged: {status}")
 
         session.commit()
         session.close()
+
+    @check_opened
+    async def get_lots_amount(
+        self, *, ticker: str | None = None, figi: str | None = None
+    ) -> int:
+        positions = await self.get_positions(ticker=ticker, figi=figi)
+        return sum([position.balance for position in positions])
+
+    @check_opened
+    async def cancel_all_orders(
+        self, *, ticker: str | None = None, figi: str | None = None
+    ):
+        if not ticker and not figi:
+            raise ValueError("Both ticker and figi are not specified")
+        if ticker:
+            logger.info(f"Cancelling all orders for {ticker}")
+            share = await self.get_share_by_ticker(ticker)
+            if not share:
+                raise ValueError(f"Share {ticker} not found")
+            figi = share.figi
+        else:
+            logger.info(f"Cancelling all orders for {figi}")
+
+        orders = await self._client.orders.get_orders(
+            account_id=(await self.get_account()).id
+        )
+        for order in orders.orders:
+            if order.figi == figi:
+                await self.cancel_order(order.order_id)
+                logger.info(f"Order {order.order_id} canceled")
 
 
 def get_client(token: str = config.TINKOFF_TOKEN):

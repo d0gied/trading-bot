@@ -1,5 +1,3 @@
-from os import error
-from tkinter import E
 from requests import get
 
 URL = "https://raw.githubusercontent.com/RussianInvestments/investAPI/main/src/docs/errors/api_errors.json"

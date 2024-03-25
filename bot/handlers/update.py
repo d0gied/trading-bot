@@ -182,7 +182,9 @@ async def confirm(call: CallbackQuery, state: FSMContext):
     trigger = data["trigger"]
     amount = data["amount"]
     with get_session() as session:
-        update_share_strategy(session, strategy, share, capital, trigger, amount)
+        update_share_strategy(
+            session, strategy, share, capital, trigger, amount, need_reset=True
+        )
     await call.message.answer("Обновлено")
     await state.clear()
 

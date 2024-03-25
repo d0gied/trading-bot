@@ -1,4 +1,3 @@
-import logging
 from loguru import logger
 from .client import InvestClient
 from .orders import Direction, LimitOrder, MarketOrder, Order, Quotation
@@ -86,10 +85,14 @@ class Transaction:
 
     async def __aexit__(self, exc_type, exc, tb):
         if exc:  # if an exception occurred
-            logger.error(exc)
+            error_path = f"{tb.tb_frame.f_code.co_filename}:{tb.tb_lineno}"
+            logger.error(f"{error_path}: {exc}")
             await self.cancel()
             self.is_successful = False
         else:
             self.is_successful = True
         await self.client.__aexit__(exc_type, exc, tb)
         return True  # suppress exceptions
+
+    def get_orders(self) -> list[PostOrderResponse]:
+        return self.buffer

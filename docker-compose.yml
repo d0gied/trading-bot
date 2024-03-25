@@ -30,15 +30,10 @@ services:
     depends_on:
       - db
       - redis
-    links:
-      - db
-      - redis
+    logging:
+      driver: json-file
     env_file:
       - .env
-    volumes:
-      # volume to file with purchases
-      - ./data/:/app/data/
-      
 
 volumes:
   db-data:

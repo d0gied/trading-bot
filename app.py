@@ -1,4 +1,5 @@
 import json
+import sys
 from typing import Dict
 import asyncio
 
@@ -7,19 +8,14 @@ from aiogram.enums.parse_mode import ParseMode
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.redis import RedisStorage, Redis
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from loguru import logger
 from tinkoff.invest import AsyncClient
+from trading.strategies import tick
 
 from bot import prepare
 from config import Config
-from trading import market_review, get_positions, cancel_all_orders
-from bot.db import (
-    add_share_strategy,
-    get_session,
-    get_share_strategies,
-    update_share_strategy,
-)
 
-config = Config()
+config = Config()  # type: ignore
 
 redis_storage = RedisStorage(
     Redis(
@@ -32,39 +28,29 @@ redis_storage = RedisStorage(
 dp = Dispatcher(storage=redis_storage)
 dp = prepare(dp)
 
-
-def deserialize_purchases() -> Dict[str, Dict]:
-    """Deserialize purchases from file"""
-    with open("data/purchases.json", "r", encoding="utf-8") as file:
-        return json.loads(file.read())
+logger.remove()  # remove default logger
+logger.add(sys.stdout, level="INFO", format="{level} | {message}", colorize=True)
+# logger.add("logs/bot.log", level="DEBUG", format="{time} | {level} | {message}")
 
 
 async def main() -> None:
-    print("Starting bot...")
+    logger.info("Starting bot...")
     bot = Bot(
         token=config.BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
     botname = (await bot.me()).username
     bot_url = f"https://t.me/{botname}"
-    print(f"Bot url: {bot_url}")
-    async with AsyncClient(token=config.TINKOFF_TOKEN) as client:
-        print("Getting positions...")
-        for position in await get_positions(client):
-            print(position)
-        if True:
-            await cancel_all_orders(client)
-    with get_session() as session:
-        for strategy in get_share_strategies(session):
-            print(strategy.ticker)
-    strategies_data = deserialize_purchases()
+    logger.info(f"Bot url: {bot_url}")
+    for admin in config.ADMIN_IDS:
+        logger.info(f"Admin id: {admin}")
+
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
-        market_review,
+        tick,
         "cron",
         day_of_week="mon-fri",
         hour="10-23",
         minute="*",
-        args=[bot, strategies_data],
         timezone="Europe/Moscow",
     )
     scheduler.start()

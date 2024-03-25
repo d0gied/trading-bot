@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from enum import Enum
-from math import e
 from typing import Any, Union, overload
 from tinkoff.invest import Quotation as TinkoffQuotation, OrderDirection
 
@@ -116,6 +115,13 @@ class Quotation(TinkoffQuotation):
     def to_float(self) -> float:
         return self.units + self.nano / 1_000_000_000
 
+    def to_bignum(self) -> int:
+        return self.units * 1_000_000_000 + self.nano
+
+    @classmethod
+    def from_bignum(cls, bignum: int | float) -> "Quotation":
+        return cls(int(bignum // 1_000_000_000), int(bignum % 1_000_000_000))
+
     @property
     def amount(self) -> float:
         return self.to_float()
@@ -126,8 +132,11 @@ class Quotation(TinkoffQuotation):
     def __int__(self) -> int:
         return self.units
 
-    def __mul__(self, other: float) -> "Quotation":
-        return Quotation(self.to_float() * other)
+    def __mul__(self, other: float | int) -> "Quotation":
+        return Quotation.from_bignum(self.to_bignum() * other)
 
-    def __truediv__(self, other: float) -> "Quotation":
-        return Quotation(self.to_float() / other)
+    def __truediv__(self, other: float | int) -> "Quotation":
+        return Quotation.from_bignum(int(self.to_bignum() / other))
+
+    def __div__(self, other: float | int) -> "Quotation":
+        return Quotation.from_bignum(int(self.to_bignum() / other))

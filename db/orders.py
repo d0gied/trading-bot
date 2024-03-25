@@ -9,7 +9,7 @@ def get_orders(
     session: Session,
     order_id: str | None = None,
     figi: str | None = None,
-    ticker: str | None = None,
+    # ticker: str | None = None,
     status: str | None = None,
     strategy_id: int | None = None,
 ) -> list[Order]:
@@ -18,8 +18,8 @@ def get_orders(
         filt.append(Order.order_id == order_id)
     if figi is not None:
         filt.append(Order.figi == figi)
-    if ticker is not None:
-        filt.append(Order.ticker == ticker)
+    # if ticker is not None:
+    # filt.append(Order.ticker == ticker)
     if status is not None:
         filt.append(Order.status == status)
     if strategy_id is not None:

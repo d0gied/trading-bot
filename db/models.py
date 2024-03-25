@@ -1,7 +1,7 @@
 import datetime
 from typing import Literal
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import BigInteger, Boolean, create_engine
+from sqlalchemy.ext.declarative import declarative_base, DeclarativeMeta
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from config import Config
 
 config = Config()  # type: ignore
-base = declarative_base()
+base: DeclarativeMeta = declarative_base()
 
 
 class ShareStrategy(base):
@@ -20,6 +20,9 @@ class ShareStrategy(base):
     max_capital = Column(Float)
     step_trigger = Column(Float)
     step_amount = Column(Integer)
+    warmed_up = Column(Boolean, default=False)
+    free_capital = Column(Float, default=0)
+    need_reset = Column(Boolean, default=False)
 
 
 class Order(base):
@@ -37,8 +40,8 @@ class Order(base):
     order_id = Column(String, nullable=False)  # order_id = orderId
     figi = Column(String, nullable=False)
     lots = Column(Integer, nullable=False)  # lots = quantity of shares
-    price_units = Column(Integer)
-    price_nanos = Column(Integer)  # price = price_units + price_nanos / 1e9
+    price_units = Column(BigInteger)
+    price_nanos = Column(BigInteger)  # price = price_units + price_nanos / 1e9
     direction = Column(String)  # buy or sell
     type = Column(String)  # limit or market
     status = Column(String)  # status of order

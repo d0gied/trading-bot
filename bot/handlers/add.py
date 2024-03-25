@@ -211,6 +211,8 @@ async def confirm(call: CallbackQuery, state: FSMContext):
             capital,
             trigger,
             amount,
+            need_reset=True,
+            warmed_up=False,
         )
     last_message_id = (await state.get_data()).get("last_message_id")
     if last_message_id:

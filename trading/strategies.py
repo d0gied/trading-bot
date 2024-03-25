@@ -245,7 +245,7 @@ async def strategy1_warmup(transaction: Transaction, strategy: ShareStrategy):
     if amount_to_buy < 0:
         amount_to_buy = 0
     logger.debug(f"Amount to buy: {amount_to_buy}")
-    amount_to_buy %= share.lot
+    amount_to_buy -= amount_to_buy % share.lot
     if amount_to_buy > 0:
         await transaction.market_buy(ticker=ticker, lots=amount_to_buy)
     free_capital = strategy.max_capital - last_price.amount * (

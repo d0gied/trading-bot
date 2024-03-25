@@ -159,6 +159,7 @@ async def strategy1(ticker: str) -> list[PostOrderResponse]:
         free_capital = float(strategy.free_capital)  # type: ignore
         logger.debug(f"Free capital: {free_capital}")
         zone_id = -1
+        current_price = await transaction.client.get_last_price(ticker=ticker)
         while free_capital > 0:
             zone_down, zone_up = get_zone(last_price, float(strategy.step_trigger) / 100, zone_id)  # type: ignore
             logger.debug(f"Zone {zone_id}: {zone_down} - {zone_up}")
@@ -172,8 +173,11 @@ async def strategy1(ticker: str) -> list[PostOrderResponse]:
                 logger.debug(f"Filled with orders: {len(orders)}")
                 continue
             new_price = Quotation(zone_down + zone_up) / 2
-            if new_price < share.min_price_increment:
-                logger.error(f"Price is negative: {new_price}")
+            if new_price < Quotation(current_price) * 0.8:
+                logger.info(f"Price is less than 80%: {new_price}")
+                break
+            if new_price > Quotation(current_price) * 1.2:
+                logger.info(f"Price is more than 120%: {new_price}")
                 break
             amount = new_price * int(strategy.step_amount)  # type: ignore
             if amount.amount > free_capital:  # type: ignore
@@ -203,9 +207,8 @@ async def strategy1(ticker: str) -> list[PostOrderResponse]:
                 continue
             logger.debug(f"Zone is empty, selling")
             new_price = Quotation(zone_down + zone_up) / 2
-            current_price = await transaction.client.get_last_price(ticker=ticker)
-            if new_price < Quotation(current_price) * 0.85:
-                logger.info(f"Price is less than 85%: {new_price}")
+            if new_price < Quotation(current_price) * 0.8:
+                logger.info(f"Price is less than 80%: {new_price}")
                 break
 
             await transaction.limit_sell(

@@ -184,7 +184,7 @@ async def strategy1(ticker: str) -> list[PostOrderResponse]:
         logger.debug(f"Free shares: {free_shares}")
         zone_id = 1
         while free_shares >= int(strategy.step_amount):  # type: ignore
-            zone_down, zone_up = get_zone(
+            zone_down, zone_up = get_zone(с
                 last_price, float(strategy.step_trigger) / 100, zone_id  # type: ignore
             )
             zone_id += 1
@@ -244,7 +244,7 @@ async def strategy1_warmup(transaction: Transaction, strategy: ShareStrategy):
     amount_to_buy -= current_amount
     if amount_to_buy < 0:
         amount_to_buy = 0
-    logger.debug(f"Amount to buy: {amount_to_buy}")
+    logger.info(f"Amount to buy: {amount_to_buy}")
     amount_to_buy -= amount_to_buy % share.lot
     if amount_to_buy > 0:
         await transaction.market_buy(ticker=ticker, lots=amount_to_buy)

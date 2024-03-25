@@ -277,7 +277,7 @@ class InvestClient:
             instrument_id=share.figi,
             figi=share.figi,
             order_type=order_type,
-            quantity=order.lots,
+            quantity=order.lots // share.lot,
             price=price,
             direction=order.direction.to_order_direction(),
             order_id=str(order_id),

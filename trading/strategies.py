@@ -203,8 +203,8 @@ async def strategy1(ticker: str) -> list[PostOrderResponse]:
                 continue
             logger.debug(f"Zone is empty, selling")
             new_price = Quotation(zone_down + zone_up) / 2
-            if new_price < Quotation(0):
-                logger.error(f"Price is negative: {new_price}")
+            if new_price < Quotation(last_price) * 0.80:
+                logger.info(f"Price is less than 80%: {new_price}")
                 break
 
             await transaction.limit_sell(

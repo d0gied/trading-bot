@@ -33,19 +33,20 @@ config = Config()  # type: ignore
 class InvestClient:
     def __init__(self, token: str) -> None:
         self.client = AsyncClient(token)
-        self._client: AsyncServices
+        self.services: AsyncServices | None
         self.is_opened = False
 
         self.buffer = []
 
     async def __aenter__(self) -> "InvestClient":
-        self._client = await self.client.__aenter__()
+        self.services = await self.client.__aenter__()
         self.is_opened = True
         await self.health_check()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         await self.client.__aexit__(exc_type, exc_val, exc_tb)
+        del self.services
         self.is_opened = False
         if isinstance(exc_val, AioRequestError):
             error = InvestError(exc_val.args[1])
@@ -62,7 +63,7 @@ class InvestClient:
 
     @check_opened
     async def health_check(self):
-        accounts = (await self._client.users.get_accounts()).accounts
+        accounts = (await self.services.users.get_accounts()).accounts
         if not accounts:
             logger.error("ACCOUNT: No accounts found")
             raise ValueError("No accounts found")
@@ -83,7 +84,7 @@ class InvestClient:
     @check_opened
     @cached(ttl=60, cache=Cache.MEMORY)
     async def get_account(self):
-        response = await self._client.users.get_accounts()
+        response = await self.services.users.get_accounts()
         if not response.accounts:
             raise ValueError("No accounts found")
         return response.accounts[0]
@@ -124,7 +125,7 @@ class InvestClient:
     @check_opened
     @cached(ttl=60, cache=Cache.MEMORY)
     async def get_shares(self) -> list[Share]:
-        shares = (await self._client.instruments.shares()).instruments
+        shares = (await self.services.instruments.shares()).instruments
         shares = [
             share
             for share in shares
@@ -158,7 +159,7 @@ class InvestClient:
         if share is None:
             raise ValueError(f"Share {ticker} not found")
         return Quotation(
-            (await self._client.market_data.get_last_prices(figi=[share.figi]))
+            (await self.services.market_data.get_last_prices(figi=[share.figi]))
             .last_prices[0]
             .price
         )
@@ -187,7 +188,7 @@ class InvestClient:
 
     @check_opened
     async def get_order_info(self, order_id: str) -> OrderState:
-        return await self._client.orders.get_order_state(
+        return await self.services.orders.get_order_state(
             account_id=(await self.get_account()).id,
             order_id=order_id,
         )
@@ -222,7 +223,7 @@ class InvestClient:
         share = await self.get_share_by_ticker(ticker)
         if share is None:
             raise ValueError(f"Share {ticker} not found")
-        response = await self._client.market_data.get_trading_status(figi=share.figi)
+        response = await self.services.market_data.get_trading_status(figi=share.figi)
         return response.limit_order_available_flag
 
     @check_opened
@@ -230,7 +231,7 @@ class InvestClient:
         share = await self.get_share_by_ticker(ticker)
         if share is None:
             raise ValueError(f"Share {ticker} not found")
-        response = await self._client.market_data.get_trading_status(figi=share.figi)
+        response = await self.services.market_data.get_trading_status(figi=share.figi)
         return response.market_order_available_flag
 
     @check_opened
@@ -274,7 +275,7 @@ class InvestClient:
             logger.error("Invalid order: {order}")
             raise ValueError("Invalid order")
 
-        order_response = await self._client.orders.post_order(
+        order_response = await self.services.orders.post_order(
             instrument_id=share.figi,
             figi=share.figi,
             order_type=order_type,
@@ -381,7 +382,7 @@ class InvestClient:
             logger.error(f"Order {order_id} not found")
             raise ValueError(f"Order {order_id} not found")
 
-        await self._client.orders.cancel_order(
+        await self.services.orders.cancel_order(
             account_id=(await self.get_account()).id,
             order_id=order_id,
         )
@@ -398,7 +399,7 @@ class InvestClient:
             raise ValueError("Both ticker and figi are specified")
 
         account_id = (await self.get_account()).id
-        positions: PositionsResponse = await self._client.operations.get_positions(
+        positions: PositionsResponse = await self.services.operations.get_positions(
             account_id=account_id
         )
         if ticker:
@@ -424,7 +425,7 @@ class InvestClient:
     @check_opened
     async def get_balance(self, currency: str = "rub") -> Quotation:
         account_id = (await self.get_account()).id
-        response = await self._client.operations.get_positions(account_id=account_id)
+        response = await self.services.operations.get_positions(account_id=account_id)
         money = response.money
         for position in money:
             if position.currency == currency:
@@ -438,7 +439,7 @@ class InvestClient:
         if not share:
             raise ValueError(f"Share {ticker} not found")
         return (
-            await self._client.operations.get_operations(
+            await self.services.operations.get_operations(
                 from_=from_,
                 to=to,
                 figi=share.figi,
@@ -455,7 +456,7 @@ class InvestClient:
     ):
         session = get_session()
         true_active = (
-            await self._client.orders.get_orders(
+            await self.services.orders.get_orders(
                 account_id=(await self.get_account()).id
             )
         ).orders
@@ -478,7 +479,7 @@ class InvestClient:
             logger.info(f"Updating {min(len(orders), limit)} orders")
 
         for order in orders[:limit]:
-            order_response = await self._client.orders.get_order_state(
+            order_response = await self.services.orders.get_order_state(
                 account_id=order.account_id, order_id=order.order_id  # type: ignore
             )
             status = "unknown"
@@ -534,7 +535,7 @@ class InvestClient:
         else:
             logger.info(f"Cancelling all orders for {figi}")
 
-        orders = await self._client.orders.get_orders(
+        orders = await self.services.orders.get_orders(
             account_id=(await self.get_account()).id
         )
         for order in orders.orders:

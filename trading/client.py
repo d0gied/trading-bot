@@ -44,13 +44,14 @@ class InvestClient:
         await self.health_check()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        await self.client.__aexit__(exc_type, exc_val, exc_tb)
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
         del self.services
+        await self.client.__aexit__(exc_type, exc_val, exc_tb)
         self.is_opened = False
-        if isinstance(exc_val, AioRequestError):
-            error = InvestError(exc_val.args[1])
+        if exc_type is not None:
+            error = InvestError(exc_val)
             logger.error(f"Error: {error}")
+        return False
 
     @staticmethod
     def check_opened(f):
@@ -123,7 +124,7 @@ class InvestClient:
             logger.info(msg)
 
     @check_opened
-    @cached(ttl=60, cache=Cache.MEMORY)
+    @cached(ttl=600, cache=Cache.MEMORY)
     async def get_shares(self) -> list[Share]:
         shares = (await self.services.instruments.shares()).instruments
         shares = [
@@ -450,9 +451,9 @@ class InvestClient:
     @check_opened
     async def update_orders(
         self,
-        on_fill: Callable[[str], Coroutine] | None = None,
-        on_reject: Callable[[str], Coroutine] | None = None,
-        on_cancel: Callable[[str], Coroutine] | None = None,
+        on_fill: Callable[["InvestClient", str], Coroutine] | None = None,
+        on_reject: Callable[["InvestClient", str], Coroutine] | None = None,
+        on_cancel: Callable[["InvestClient", str], Coroutine] | None = None,
     ):
         session = get_session()
         true_active = (
@@ -497,16 +498,16 @@ class InvestClient:
                 case _:
                     status = "unknown"  # type: ignore
             if str(status) != str(order.status):
-                update_order(session, UpdateOrder(order_id=order.order_id, status=status))  # type: ignore
                 logger.info(
                     f"Order {order.order_id} updated: {order.status} -> {status}"
                 )
+                update_order(session, UpdateOrder(order_id=order.order_id, status=status))  # type: ignore
                 if status == "fill" and on_fill is not None:
-                    await on_fill(order_response.order_id)
+                    await on_fill(self, order_response.order_id)
                 if status == "rejected" and on_reject is not None:
-                    await on_reject(order_response.order_id)
+                    await on_reject(self, order_response.order_id)
                 if status == "cancelled" and on_cancel is not None:
-                    await on_cancel(order_response.order_id)
+                    await on_cancel(self, order_response.order_id)
             else:
                 logger.debug(f"Order {order.order_id} unchanged: {status}")
 

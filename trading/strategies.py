@@ -22,39 +22,38 @@ async def send_message(message: str):
         await bot.send_message(admin, message)
 
 
-async def on_update(order_id: str):
-    async with get_client() as client:
-        db = get_session()
-        order = get_orders(db, order_id=order_id)[0]
-        if not order:
-            raise ValueError(f"Order {order_id} not found")
-        share = await client.get_share_by_figi(str(order.figi))
-        if share is None:
-            raise ValueError(f"Share {order.figi} not found")
+async def on_update(client: InvestClient, order_id: str):
+    db = get_session()
+    order = get_orders(db, order_id=order_id)[0]
+    if not order:
+        raise ValueError(f"Order {order_id} not found")
+    share = await client.get_share_by_figi(str(order.figi))
+    if share is None:
+        raise ValueError(f"Share {order.figi} not found")
 
-        if str(order.direction).lower() != "buy":  # type: ignore
-            return
-        extra_balance = Quotation(int(order.price_units), int(order.price_nanos)) * int(  # type: ignore
-            order.lots  # type: ignore
-        )
-        ticker = share.ticker
-        strategy = get_share_strategies(db, 1, ticker)
-        if not strategy:
-            db.close()
-            return
-        strategy = strategy[0]
-        strategy.free_capital = float(strategy.free_capital) + extra_balance.amount  # type: ignore
-        db.commit()
-        logger.debug(f"Returned {extra_balance} to free capital")
+    if str(order.direction).lower() != "buy":  # type: ignore
+        return
+    extra_balance = Quotation(int(order.price_units), int(order.price_nanos)) * int(  # type: ignore
+        order.lots  # type: ignore
+    )
+    ticker = share.ticker
+    strategy = get_share_strategies(db, 1, ticker)
+    if not strategy:
         db.close()
+        return
+    strategy = strategy[0]
+    strategy.free_capital = float(strategy.free_capital) + extra_balance.amount  # type: ignore
+    db.commit()
+    logger.debug(f"Returned {extra_balance} to free capital")
+    db.close()
 
 
 async def tick():
-    async with get_client() as client:
-        await client.update_orders(
-            on_cancel=on_update,
-            on_reject=on_update,
-        )
+    # async with get_client() as client:
+    #     await client.update_orders(
+    #         on_cancel=on_update,
+    #         on_reject=on_update,
+    #     )
     db = get_session()
     strategies = get_share_strategies(db, 1)
     db.close()
@@ -128,11 +127,6 @@ async def strategy1(ticker: str) -> list[PostOrderResponse]:
             db_session.commit()
             logger.info(f"Reset strategy 1 for {ticker}")
 
-            await transaction.client.update_orders(
-                on_cancel=on_update,
-                on_reject=on_update,
-            )
-
         if not bool(strategy.warmed_up):
             await strategy1_warmup(transaction, strategy)
             strategy.warmed_up = True  # type: ignore
@@ -140,10 +134,10 @@ async def strategy1(ticker: str) -> list[PostOrderResponse]:
             logger.info(f"Warmed up strategy 1 for {ticker}")
             # strategy.warmed_up = True  # type: ignore
             # db_session.commit()
-            await transaction.client.update_orders(
-                on_cancel=on_update,
-                on_reject=on_update,
-            )
+        await transaction.client.update_orders(
+            on_cancel=on_update,
+            on_reject=on_update,
+        )
 
         last_price = await transaction.client.get_last_price(ticker=ticker)
         last_closed = await transaction.client.get_last_closed(ticker=ticker)

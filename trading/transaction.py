@@ -87,11 +87,15 @@ class Transaction:
         if exc:  # if an exception occurred
             error_path = f"{tb.tb_frame.f_code.co_filename}:{tb.tb_lineno}"
             logger.error(f"{error_path}: {exc}")
-            await self.cancel()
+            try:
+                await self.cancel()
+            except Exception as e:
+                logger.error(f"Error cancelling orders: {e}")
             self.is_successful = False
         else:
             self.is_successful = True
         await self.client.__aexit__(exc_type, exc, tb)
+
         return True  # suppress exceptions
 
     def get_orders(self) -> list[PostOrderResponse]:

@@ -33,7 +33,7 @@ config = Config()  # type: ignore
 class InvestClient:
     def __init__(self, token: str) -> None:
         self.client = AsyncClient(token)
-        self.services: AsyncServices | None
+        self.services: AsyncServices
         self.is_opened = False
 
         self.buffer = []

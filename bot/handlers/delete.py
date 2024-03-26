@@ -3,7 +3,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from db import get_session
+from db import Connection
 from db.strategies import del_share_strategy, get_share_strategies
 
 from config import Config
@@ -36,7 +36,8 @@ async def update_srategy(message: Message, state: FSMContext):
 @router.callback_query(F.data.startswith("delete:strategy:"))
 async def update_strategy(call: CallbackQuery, state: FSMContext):
     strategy = int(call.data.split(":")[2])
-    strategies = get_share_strategies(get_session(), strategy=strategy)
+    with Connection() as session:
+        strategies = get_share_strategies(session, strategy=strategy)
     if not strategies:
         await call.message.answer("Эта стратегия еще не используется")
         return
@@ -70,7 +71,8 @@ async def update_ticker(call: CallbackQuery, state: FSMContext):
     ticker = call.data.split(":")[2]
     strategy = (await state.get_data()).get("strategy")
     print(strategy, ticker)
-    share_strategy = get_share_strategies(get_session(), strategy, ticker)
+    with Connection() as session:
+        share_strategy = get_share_strategies(session, strategy, ticker)
     if not share_strategy:
         await call.message.answer("Этот тикер не используется в этой стратегии")
         return
@@ -101,7 +103,7 @@ async def confirm(call: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     share = data["share"]
     strategy = data["strategy"]
-    with get_session() as session:
+    with Connection() as session:
         del_share_strategy(session, strategy, share)
     last_message_id = (await state.get_data()).get("last_message_id")
     if last_message_id:

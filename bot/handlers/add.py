@@ -4,7 +4,7 @@ from aiogram.filters import callback_data
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InputMediaPhoto, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from db import get_session
+from db import Connection
 from db.strategies import add_share_strategy, get_share_strategies
 
 from Levenshtein import distance
@@ -96,7 +96,7 @@ async def share(message: Message, state: FSMContext):
 @router.callback_query(F.data.startswith("strategy:"))
 async def strategy(call: CallbackQuery, state: FSMContext):
     strategy = int(call.data.split(":")[1])
-    with get_session() as session:
+    with Connection() as session:
         share = (await state.get_data())["share"]
         if get_share_strategies(session, strategy, share):
             await call.message.answer(
@@ -203,7 +203,7 @@ async def confirm(call: CallbackQuery, state: FSMContext):
     capital = data["capital"]
     trigger = data["trigger"]
     amount = data["amount"]
-    with get_session() as session:
+    with Connection() as session:
         add_share_strategy(
             session,
             strategy,

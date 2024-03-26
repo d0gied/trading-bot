@@ -4,7 +4,7 @@ from aiogram.filters import callback_data
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InputMediaPhoto, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from db import get_session
+from db import Connection
 from db.strategies import get_share_strategies, update_share_strategy
 from Levenshtein import distance
 
@@ -39,7 +39,8 @@ async def update_srategy(message: Message, state: FSMContext):
 @router.callback_query(F.data.startswith("update:strategy:"))
 async def update_strategy(call: CallbackQuery, state: FSMContext):
     strategy = int(call.data.split(":")[2])
-    strategies = get_share_strategies(get_session(), strategy=strategy)
+    with Connection() as session:
+        strategies = get_share_strategies(session, strategy=strategy)
     if not strategies:
         await call.message.answer("Эта стратегия еще не используется")
         return
@@ -74,7 +75,8 @@ async def update_ticker(call: CallbackQuery, state: FSMContext):
     ticker = call.data.split(":")[2]
     strategy = (await state.get_data()).get("strategy")
     print(strategy, ticker)
-    share_strategy = get_share_strategies(get_session(), strategy, ticker)
+    with Connection() as session:
+        share_strategy = get_share_strategies(session, strategy, ticker)
     if not share_strategy:
         await call.message.answer("Этот тикер не используется в этой стратегии")
         return
@@ -181,7 +183,7 @@ async def confirm(call: CallbackQuery, state: FSMContext):
     capital = data["capital"]
     trigger = data["trigger"]
     amount = data["amount"]
-    with get_session() as session:
+    with Connection() as session:
         update_share_strategy(
             session, strategy, share, capital, trigger, amount, need_reset=True
         )

@@ -25,7 +25,7 @@ from aiocache import cached, Cache  # type: ignore
 from .errors import InvestError
 
 from db.orders import add_order, update_order, Order as DBOrder
-from db import get_session
+from db import Connection
 
 config = Config()  # type: ignore
 
@@ -170,21 +170,20 @@ class InvestClient:
         share = await self.get_share_by_ticker(ticker)
         if share is None:
             raise ValueError(f"Share {ticker} not found")
-        db = get_session()
-        today = datetime.datetime.now(datetime.timezone.utc)
-        today = today.replace(hour=1, minute=0, second=0, microsecond=0)
-        last = (
-            db.query(DBOrder)
-            .filter(
-                (DBOrder.figi == share.figi)
-                & (DBOrder.status == "fill")
-                & (DBOrder.type == "limit")
-                & (DBOrder.created_at > today)  # too old
+        with Connection() as db:
+            today = datetime.datetime.now(datetime.timezone.utc)
+            today = today.replace(hour=1, minute=0, second=0, microsecond=0)
+            last = (
+                db.query(DBOrder)
+                .filter(
+                    (DBOrder.figi == share.figi)
+                    & (DBOrder.status == "fill")
+                    & (DBOrder.type == "limit")
+                    & (DBOrder.created_at > today)  # too old
+                )
+                .order_by(DBOrder.updated_at.desc())
+                .first()
             )
-            .order_by(DBOrder.updated_at.desc())
-            .first()
-        )
-        db.close()
         return last
 
     @check_opened
@@ -199,24 +198,23 @@ class InvestClient:
         share = await self.get_share_by_ticker(ticker)
         if share is None:
             raise ValueError(f"Share {ticker} not found")
-        db = get_session()
-        orders = (
-            db.query(DBOrder)
-            .filter(
-                (DBOrder.figi == share.figi)
-                & (DBOrder.status == "created")
-                & (
-                    DBOrder.price_units * 10**9 + DBOrder.price_nanos
-                    >= from_.units * 10**9 + from_.nano
+        with Connection() as db:
+            orders = (
+                db.query(DBOrder)
+                .filter(
+                    (DBOrder.figi == share.figi)
+                    & (DBOrder.status == "created")
+                    & (
+                        DBOrder.price_units * 10**9 + DBOrder.price_nanos
+                        >= from_.units * 10**9 + from_.nano
+                    )
+                    & (
+                        DBOrder.price_units * 10**9 + DBOrder.price_nanos
+                        <= to.units * 10**9 + to.nano
+                    )
                 )
-                & (
-                    DBOrder.price_units * 10**9 + DBOrder.price_nanos
-                    <= to.units * 10**9 + to.nano
-                )
+                .all()
             )
-            .all()
-        )
-        db.close()
         return orders
 
     @check_opened
@@ -294,20 +292,21 @@ class InvestClient:
             f"account_id={(await self.get_account()).id}"
         )
         logger.info(f"Order {order_response.order_id} created")
-        add_order(
-            get_session(),
-            AddOrder(
-                order_id=order_response.order_id,
-                figi=share.figi,
-                lots=order.lots,
-                price_units=price.units,
-                price_nanos=price.nano,
-                direction=order.direction.name,
-                type=order_type.name,
-                status="created",
-                account_id=(await self.get_account()).id,
-            ),
-        )
+        with Connection() as session:
+            add_order(
+                session,
+                AddOrder(
+                    order_id=order_response.order_id,
+                    figi=share.figi,
+                    lots=order.lots,
+                    price_units=price.units,
+                    price_nanos=price.nano,
+                    direction=order.direction.name,
+                    type=order_type.name,
+                    status="created",
+                    account_id=(await self.get_account()).id,
+                ),
+            )
         return order_response
 
     @check_opened
@@ -377,17 +376,17 @@ class InvestClient:
 
     @check_opened
     async def cancel_order(self, order_id: str):
-        db = get_session()
-        order = db.query(DBOrder).filter_by(order_id=order_id).first()
-        if not order:
-            logger.error(f"Order {order_id} not found")
-            raise ValueError(f"Order {order_id} not found")
+        with Connection() as db:
+            order = db.query(DBOrder).filter_by(order_id=order_id).first()
+            if not order:
+                logger.error(f"Order {order_id} not found")
+                raise ValueError(f"Order {order_id} not found")
 
-        await self.services.orders.cancel_order(
-            account_id=(await self.get_account()).id,
-            order_id=order_id,
-        )
-        logger.info(f"Order {order_id} canceled")
+            await self.services.orders.cancel_order(
+                account_id=(await self.get_account()).id,
+                order_id=order_id,
+            )
+            logger.info(f"Order {order_id} canceled")
 
     @check_opened
     async def get_positions(
@@ -451,68 +450,66 @@ class InvestClient:
     @check_opened
     async def update_orders(
         self,
-        on_fill: Callable[["InvestClient", str], Coroutine] | None = None,
-        on_reject: Callable[["InvestClient", str], Coroutine] | None = None,
-        on_cancel: Callable[["InvestClient", str], Coroutine] | None = None,
+        on_fill: Callable[[str], Coroutine] | None = None,
+        on_reject: Callable[[str], Coroutine] | None = None,
+        on_cancel: Callable[[str], Coroutine] | None = None,
     ):
-        session = get_session()
-        true_active = (
-            await self.services.orders.get_orders(
-                account_id=(await self.get_account()).id
-            )
-        ).orders
-        true_active_ids = [order.order_id for order in true_active]
-
-        orders = session.query(DBOrder).filter((DBOrder.status == "created")).all()
-        counter = 0
-        for order in orders:
-            if order.order_id not in true_active_ids:
-                counter += 1
-                order.status = "unknown"  # type: ignore
-        session.commit()
-        logger.info(f"New unknown orders: {counter}")
-
-        orders = session.query(DBOrder).filter((DBOrder.status == "unknown")).all()
-        limit = 40
-        if not orders:
-            logger.info("No orders to update")
-        else:
-            logger.info(f"Updating {min(len(orders), limit)} orders")
-
-        for order in orders[:limit]:
-            order_response = await self.services.orders.get_order_state(
-                account_id=order.account_id, order_id=order.order_id  # type: ignore
-            )
-            status = "unknown"
-            match order_response.execution_report_status:
-                case ExecutionStatus.EXECUTION_REPORT_STATUS_NEW:
-                    status = "created"
-                case ExecutionStatus.EXECUTION_REPORT_STATUS_FILL:
-                    status = "fill"
-                case ExecutionStatus.EXECUTION_REPORT_STATUS_REJECTED:
-                    status = "rejected"
-                case ExecutionStatus.EXECUTION_REPORT_STATUS_CANCELLED:
-                    status = "cancelled"
-                case ExecutionStatus.EXECUTION_REPORT_STATUS_PARTIALLYFILL:
-                    status = "created"
-                case _:
-                    status = "unknown"  # type: ignore
-            if str(status) != str(order.status):
-                logger.info(
-                    f"Order {order.order_id} updated: {order.status} -> {status}"
+        with Connection() as session:
+            true_active = (
+                await self.services.orders.get_orders(
+                    account_id=(await self.get_account()).id
                 )
-                update_order(session, UpdateOrder(order_id=order.order_id, status=status))  # type: ignore
-                if status == "fill" and on_fill is not None:
-                    await on_fill(self, order_response.order_id)
-                if status == "rejected" and on_reject is not None:
-                    await on_reject(self, order_response.order_id)
-                if status == "cancelled" and on_cancel is not None:
-                    await on_cancel(self, order_response.order_id)
-            else:
-                logger.debug(f"Order {order.order_id} unchanged: {status}")
+            ).orders
+            true_active_ids = [order.order_id for order in true_active]
 
-        session.commit()
-        session.close()
+            orders = session.query(DBOrder).filter((DBOrder.status == "created")).all()
+            counter = 0
+            for order in orders:
+                if order.order_id not in true_active_ids:
+                    counter += 1
+                    order.status = "unknown"  # type: ignore
+            session.commit()
+            logger.info(f"New unknown orders: {counter}")
+
+            orders = session.query(DBOrder).filter((DBOrder.status == "unknown")).all()
+            limit = 40
+            if not orders:
+                logger.info("No orders to update")
+            else:
+                logger.info(f"Updating {min(len(orders), limit)} orders")
+
+            for order in orders[:limit]:
+                order_response = await self.services.orders.get_order_state(
+                    account_id=order.account_id, order_id=order.order_id  # type: ignore
+                )
+                status = "unknown"
+                match order_response.execution_report_status:
+                    case ExecutionStatus.EXECUTION_REPORT_STATUS_NEW:
+                        status = "created"
+                    case ExecutionStatus.EXECUTION_REPORT_STATUS_FILL:
+                        status = "fill"
+                    case ExecutionStatus.EXECUTION_REPORT_STATUS_REJECTED:
+                        status = "rejected"
+                    case ExecutionStatus.EXECUTION_REPORT_STATUS_CANCELLED:
+                        status = "cancelled"
+                    case ExecutionStatus.EXECUTION_REPORT_STATUS_PARTIALLYFILL:
+                        status = "created"
+                    case _:
+                        status = "unknown"  # type: ignore
+                if str(status) != str(order.status):
+                    logger.info(
+                        f"Order {order.order_id} updated: {order.status} -> {status}"
+                    )
+                    update_order(session, UpdateOrder(order_id=order.order_id, status=status))  # type: ignore
+                    if status == "fill" and on_fill is not None:
+                        await on_fill(order_response.order_id)
+                    if status == "rejected" and on_reject is not None:
+                        await on_reject(order_response.order_id)
+                    if status == "cancelled" and on_cancel is not None:
+                        await on_cancel(order_response.order_id)
+                else:
+                    logger.debug(f"Order {order.order_id} unchanged: {status}")
+            session.commit()
 
     @check_opened
     async def get_lots_amount(

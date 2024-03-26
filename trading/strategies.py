@@ -1,13 +1,12 @@
 from loguru import logger
 from requests import session
 
-from db import orders
 from db.models import ShareStrategy
 from .client import InvestClient, get_client
 from .transaction import Transaction, PostOrderResponse
 from db.strategies import get_share_strategies
 from db.orders import Order, get_orders
-from db import get_session
+from db import Connection
 from aiogram import Bot
 
 from trading.orders import Quotation
@@ -22,30 +21,29 @@ async def send_message(message: str):
         await bot.send_message(admin, message)
 
 
-async def on_update(client: InvestClient, order_id: str):
-    db = get_session()
-    order = get_orders(db, order_id=order_id)[0]
-    if not order:
-        raise ValueError(f"Order {order_id} not found")
-    share = await client.get_share_by_figi(str(order.figi))
-    if share is None:
-        raise ValueError(f"Share {order.figi} not found")
+async def on_update(order_id: str):
+    async with get_client() as client:
+        with Connection() as db:
+            order = get_orders(db, order_id=order_id)[0]
+            if not order:
+                raise ValueError(f"Order {order_id} not found")
+            share = await client.get_share_by_figi(str(order.figi))
+            if share is None:
+                raise ValueError(f"Share {order.figi} not found")
 
-    if str(order.direction).lower() != "buy":  # type: ignore
-        return
-    extra_balance = Quotation(int(order.price_units), int(order.price_nanos)) * int(  # type: ignore
-        order.lots  # type: ignore
-    )
-    ticker = share.ticker
-    strategy = get_share_strategies(db, 1, ticker)
-    if not strategy:
-        db.close()
-        return
-    strategy = strategy[0]
-    strategy.free_capital = float(strategy.free_capital) + extra_balance.amount  # type: ignore
-    db.commit()
-    logger.debug(f"Returned {extra_balance} to free capital")
-    db.close()
+            if str(order.direction).lower() != "buy":  # type: ignore
+                return
+            extra_balance = Quotation(int(order.price_units), int(order.price_nanos)) * int(  # type: ignore
+                order.lots  # type: ignore
+            )
+            ticker = share.ticker
+            strategy = get_share_strategies(db, 1, ticker)
+            if not strategy:
+                return
+            strategy = strategy[0]
+            strategy.free_capital = float(strategy.free_capital) + extra_balance.amount  # type: ignore
+            db.commit()
+            logger.debug(f"Returned {extra_balance} to free capital")
 
 
 async def tick():
@@ -54,19 +52,17 @@ async def tick():
     #         on_cancel=on_update,
     #         on_reject=on_update,
     #     )
-    db = get_session()
-    strategies = get_share_strategies(db, 1)
-    db.close()
+    with Connection() as db:
+        strategies = get_share_strategies(db, 1)
     for strategy in strategies:
         result = await strategy1(str(strategy.ticker))
         orders: list[Order] = []
-        db = get_session()
-        for r in result:
-            order = db.query(Order).filter(Order.order_id == r.order_id).first()
-            if order is None:
-                raise ValueError(f"Order {r.order_id} not found")
-            orders.append(order)
-        db.close()
+        with Connection() as db:
+            for r in result:
+                order = db.query(Order).filter(Order.order_id == r.order_id).first()
+                if order is None:
+                    raise ValueError(f"Order {r.order_id} not found")
+                orders.append(order)
         if not orders:
             continue
         message = f"Стратегия 1 для {strategy.ticker}:\n"
@@ -111,117 +107,118 @@ def get_zone(price: Quotation, price_step: float, i: int):
 
 
 async def strategy1(ticker: str) -> list[PostOrderResponse]:
-    db_session = get_session()
     logger.info(f"Processing strategy 1 for {ticker}")
-    strategy = get_share_strategies(db_session, 1, ticker)[0]
-    transaction = Transaction(get_client())
-    async with transaction:
-        share = await transaction.client.get_share_by_ticker(ticker)
-        if share is None:
-            raise ValueError(f"Share {ticker} not found")
+    with Connection() as db_session:
+        strategy = get_share_strategies(db_session, 1, ticker)[0]
+        transaction = Transaction(get_client())
+        async with transaction:
+            share = await transaction.client.get_share_by_ticker(ticker)
+            if share is None:
+                raise ValueError(f"Share {ticker} not found")
 
-        if bool(strategy.need_reset):
-            logger.info(f"Resetting strategy 1 for {ticker}")
-            await transaction.client.cancel_all_orders(ticker=ticker)
-            strategy.need_reset = False  # type: ignore
+            if bool(strategy.need_reset):
+                logger.info(f"Resetting strategy 1 for {ticker}")
+                await transaction.client.cancel_all_orders(ticker=ticker)
+                strategy.need_reset = False  # type: ignore
+                db_session.commit()
+                logger.info(f"Reset strategy 1 for {ticker}")
+
+            if not bool(strategy.warmed_up):
+                await strategy1_warmup(transaction, strategy)
+                strategy.warmed_up = True  # type: ignore
+                db_session.commit()
+                logger.info(f"Warmed up strategy 1 for {ticker}")
+                # strategy.warmed_up = True  # type: ignore
+                # db_session.commit()
+            await transaction.client.update_orders(
+                on_cancel=on_update,
+                on_reject=on_update,
+            )
+
+            last_price = await transaction.client.get_last_price(ticker=ticker)
+            last_closed = await transaction.client.get_last_closed(ticker=ticker)
+            if last_closed is not None:
+                order = await transaction.client.get_order_info(
+                    str(last_closed.order_id)
+                )
+                logger.debug(f"Last closed order: {order}")
+                avg_price = order.average_position_price
+                last_price = Quotation(avg_price.units, avg_price.nano)
+                logger.debug(f"Using last closed price: {last_price}")
+            else:
+                logger.debug(f"Last price: {last_price}")
+
+            free_capital = float(strategy.free_capital)  # type: ignore
+            logger.debug(f"Free capital: {free_capital}")
+            zone_id = -1
+            current_price = await transaction.client.get_last_price(ticker=ticker)
+            while free_capital > 0:
+                zone_down, zone_up = get_zone(last_price, float(strategy.step_trigger) / 100, zone_id)  # type: ignore
+                logger.debug(f"Zone {zone_id}: {zone_down} - {zone_up}")
+                zone_down = Quotation(zone_down)
+                zone_up = Quotation(zone_up)
+                orders = await transaction.client.find_open_orders(
+                    ticker=ticker, from_=zone_down, to=zone_up
+                )
+                zone_id -= 1
+                if orders:
+                    logger.debug(f"Filled with orders: {len(orders)}")
+                    continue
+                new_price = Quotation(zone_down + zone_up) / 2
+                if new_price < Quotation(current_price) * 0.8:
+                    logger.info(f"Price is less than 80%: {new_price}")
+                    break
+                if new_price > Quotation(current_price) * 1.2:
+                    logger.info(f"Price is more than 120%: {new_price}")
+                    break
+                amount = new_price * int(strategy.step_amount)  # type: ignore
+                if amount.amount > free_capital:  # type: ignore
+                    break
+                logger.debug(f"Zone is empty, buying")
+                free_capital -= amount.amount
+                await transaction.limit_buy(
+                    ticker=ticker, lots=int(strategy.step_amount), price=new_price  # type: ignore
+                )
+
+            free_shares = await transaction.client.get_lots_amount(ticker=ticker)
+            logger.debug(f"Free shares: {free_shares}")
+            zone_id = 1
+            while free_shares >= int(strategy.step_amount):  # type: ignore
+                zone_down, zone_up = get_zone(
+                    last_price, float(strategy.step_trigger) / 100, zone_id  # type: ignore
+                )
+                zone_id += 1
+                logger.debug(f"Zone {zone_id}: {zone_down} - {zone_up}")
+                zone_down = Quotation(zone_down)
+                zone_up = Quotation(zone_up)
+                orders = await transaction.client.find_open_orders(
+                    ticker=ticker, from_=zone_down, to=zone_up
+                )
+                if orders:
+                    logger.debug(f"Filled")
+                    continue
+                logger.debug(f"Zone is empty, selling")
+                new_price = Quotation(zone_down + zone_up) / 2
+                if new_price < Quotation(current_price) * 0.8:
+                    logger.info(f"Price is less than 80%: {new_price}")
+                    break
+                if new_price > Quotation(current_price) * 1.2:
+                    logger.info(f"Price is more than 120%: {new_price}")
+                    break
+
+                await transaction.limit_sell(
+                    ticker=ticker, lots=int(strategy.step_amount), price=new_price  # type: ignore
+                )
+                free_shares -= int(strategy.step_amount)  # type: ignore
+
+            logger.debug(f"Free shares: {free_shares}")
+            logger.debug(f"Free capital: {free_capital}")
+            strategy.free_capital = free_capital  # type: ignore
             db_session.commit()
-            logger.info(f"Reset strategy 1 for {ticker}")
-
-        if not bool(strategy.warmed_up):
-            await strategy1_warmup(transaction, strategy)
-            strategy.warmed_up = True  # type: ignore
-            db_session.commit()
-            logger.info(f"Warmed up strategy 1 for {ticker}")
-            # strategy.warmed_up = True  # type: ignore
-            # db_session.commit()
-        await transaction.client.update_orders(
-            on_cancel=on_update,
-            on_reject=on_update,
-        )
-
-        last_price = await transaction.client.get_last_price(ticker=ticker)
-        last_closed = await transaction.client.get_last_closed(ticker=ticker)
-        if last_closed is not None:
-            order = await transaction.client.get_order_info(str(last_closed.order_id))
-            logger.debug(f"Last closed order: {order}")
-            avg_price = order.average_position_price
-            last_price = Quotation(avg_price.units, avg_price.nano)
-            logger.debug(f"Using last closed price: {last_price}")
+        if transaction.is_successful:
+            return transaction.get_orders()
         else:
-            logger.debug(f"Last price: {last_price}")
-
-        free_capital = float(strategy.free_capital)  # type: ignore
-        logger.debug(f"Free capital: {free_capital}")
-        zone_id = -1
-        current_price = await transaction.client.get_last_price(ticker=ticker)
-        while free_capital > 0:
-            zone_down, zone_up = get_zone(last_price, float(strategy.step_trigger) / 100, zone_id)  # type: ignore
-            logger.debug(f"Zone {zone_id}: {zone_down} - {zone_up}")
-            zone_down = Quotation(zone_down)
-            zone_up = Quotation(zone_up)
-            orders = await transaction.client.find_open_orders(
-                ticker=ticker, from_=zone_down, to=zone_up
-            )
-            zone_id -= 1
-            if orders:
-                logger.debug(f"Filled with orders: {len(orders)}")
-                continue
-            new_price = Quotation(zone_down + zone_up) / 2
-            if new_price < Quotation(current_price) * 0.8:
-                logger.info(f"Price is less than 80%: {new_price}")
-                break
-            if new_price > Quotation(current_price) * 1.2:
-                logger.info(f"Price is more than 120%: {new_price}")
-                break
-            amount = new_price * int(strategy.step_amount)  # type: ignore
-            if amount.amount > free_capital:  # type: ignore
-                break
-            logger.debug(f"Zone is empty, buying")
-            free_capital -= amount.amount
-            await transaction.limit_buy(
-                ticker=ticker, lots=int(strategy.step_amount), price=new_price  # type: ignore
-            )
-
-        free_shares = await transaction.client.get_lots_amount(ticker=ticker)
-        logger.debug(f"Free shares: {free_shares}")
-        zone_id = 1
-        while free_shares >= int(strategy.step_amount):  # type: ignore
-            zone_down, zone_up = get_zone(
-                last_price, float(strategy.step_trigger) / 100, zone_id  # type: ignore
-            )
-            zone_id += 1
-            logger.debug(f"Zone {zone_id}: {zone_down} - {zone_up}")
-            zone_down = Quotation(zone_down)
-            zone_up = Quotation(zone_up)
-            orders = await transaction.client.find_open_orders(
-                ticker=ticker, from_=zone_down, to=zone_up
-            )
-            if orders:
-                logger.debug(f"Filled")
-                continue
-            logger.debug(f"Zone is empty, selling")
-            new_price = Quotation(zone_down + zone_up) / 2
-            if new_price < Quotation(current_price) * 0.8:
-                logger.info(f"Price is less than 80%: {new_price}")
-                break
-            if new_price > Quotation(current_price) * 1.2:
-                logger.info(f"Price is more than 120%: {new_price}")
-                break
-
-            await transaction.limit_sell(
-                ticker=ticker, lots=int(strategy.step_amount), price=new_price  # type: ignore
-            )
-            free_shares -= int(strategy.step_amount)  # type: ignore
-
-        logger.debug(f"Free shares: {free_shares}")
-        logger.debug(f"Free capital: {free_capital}")
-        strategy.free_capital = free_capital  # type: ignore
-        db_session.commit()
-    db_session.close()
-    if transaction.is_successful:
-        return transaction.get_orders()
-    else:
-        return []
+            return []
 
 
 async def strategy1_warmup(transaction: Transaction, strategy: ShareStrategy):

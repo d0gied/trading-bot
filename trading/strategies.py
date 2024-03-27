@@ -14,9 +14,10 @@ from config import Config
 
 config = Config()  # type: ignore
 
+bot = Bot(token=config.BOT_TOKEN)
+
 
 async def send_message(message: str):
-    bot = Bot(token=config.BOT_TOKEN)
     for admin in config.ADMIN_IDS:
         await bot.send_message(admin, message)
 
@@ -31,8 +32,16 @@ async def on_update(order_id: str):
             if share is None:
                 raise ValueError(f"Share {order.figi} not found")
 
-            if str(order.direction).lower() != "buy":  # type: ignore
+            should_add_money = (
+                str(order.direction).lower() == "buy"
+                and str(order.status).lower() in ["cancelled", "rejected"]
+            ) or (
+                str(order.direction).lower() == "sell"
+                and str(order.status).lower() in ["fill"]
+            )
+            if not should_add_money:
                 return
+
             extra_balance = Quotation(int(order.price_units), int(order.price_nanos)) * int(  # type: ignore
                 order.lots  # type: ignore
             )

@@ -1,5 +1,3 @@
-import datetime
-from enum import auto
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from .models import base, ShareStrategy, Order

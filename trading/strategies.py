@@ -140,6 +140,7 @@ async def strategy1(ticker: str) -> list[PostOrderResponse]:
                 # strategy.warmed_up = True  # type: ignore
                 # db_session.commit()
             await transaction.client.update_orders(
+                on_fill=on_update,
                 on_cancel=on_update,
                 on_reject=on_update,
             )
